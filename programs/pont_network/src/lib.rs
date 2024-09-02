@@ -6,7 +6,7 @@ const ANCHOR_DISCRIMINATOR: usize = 8;
 const PUBKEY_SIZE: usize = 32;
 const FINGERPRINT_SIZE: usize = 32;
 
-declare_id!("GDWmzrpZzrk6zTt2HWdFctrnZ18tncodA7kHwpuh3VsQ");
+declare_id!("ApvfQGqW8kzLyiG8x8PTrWJS7o2uLxXNjns6bYLh3H1R");
 
 #[program]
 pub mod pont_network {
@@ -19,6 +19,8 @@ pub mod pont_network {
         ship_account.ship = *ctx.accounts.ship.key;
         ship_account.data_accounts = Vec::new();
 
+        msg!("Ship account initialized");
+
         emit!(ShipInitialized {
             ship: *ctx.accounts.ship.key,
         });
@@ -28,14 +30,15 @@ pub mod pont_network {
 
     pub fn add_data_account(
         ctx: Context<AddDataAccount>,
-        timestamp: Vec<u8>,
         external_observers: Vec<Pubkey>,
         external_observers_keys: Vec<[u8; 32]>,
     ) -> Result<()> {
         assert_eq!(external_observers.len(), external_observers_keys.len());
 
         let ship_account = &mut ctx.accounts.ship_account;
-        ship_account.data_accounts.push(ctx.accounts.data_account.key());
+        ship_account
+            .data_accounts
+            .push(ctx.accounts.data_account.key());
 
         let data_account = &mut ctx.accounts.data_account;
         data_account.ship = *ctx.accounts.ship.key;
@@ -48,7 +51,7 @@ pub mod pont_network {
 
         emit!(DataAccountInitialized {
             ship: *ctx.accounts.ship.key,
-            timestamp_seed: timestamp,
+            data_acc_count: ship_account.data_accounts.len() as u32,
             external_observers: external_observers,
             external_observers_keys: external_observers_keys,
         });
@@ -150,7 +153,7 @@ pub struct ShipInitialized {
 #[event]
 pub struct DataAccountInitialized {
     pub ship: Pubkey,
-    pub timestamp_seed: Vec<u8>,
+    pub data_acc_count: u32,
     pub external_observers: Vec<Pubkey>,
     pub external_observers_keys: Vec<[u8; 32]>,
 }
@@ -177,7 +180,9 @@ pub struct ShipAccount {
 
 impl ShipAccount {
     pub fn get_size(&self) -> usize {
-        8 + 32 + 4 + (self.data_accounts.len() * 32)
+        let size = 8 + 32 + 4 + (self.data_accounts.len() * 32);
+        msg!("Current ShipAccount size: {}", size);
+        size
     }
 }
 
@@ -196,12 +201,15 @@ pub struct ExternalObserversAccount {
 
 impl ExternalObserversAccount {
     pub fn get_size(&self) -> usize {
-        8 + 4
+        let size = 8
+            + 4
             + (self.unapproved_external_observers.len() * PUBKEY_SIZE)
             + 4
             + (self.external_observers.len() * PUBKEY_SIZE)
             + 4
-            + (self.external_observers_keys.len() * 32)
+            + (self.external_observers_keys.len() * 32);
+        msg!("Current ExternalObserversAccount size: {}", size);
+        size
     }
 }
 
@@ -221,12 +229,16 @@ pub struct InitializeShip<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(timestamp: Vec<u8>, external_observers: Vec<Pubkey>, external_observers_keys: Vec<[u8; 32]>,)]
+#[instruction(external_observers: Vec<Pubkey>, external_observers_keys: Vec<[u8; 32]>,)]
 pub struct AddDataAccount<'info> {
     #[account(
         mut,
         has_one = ship,
-        realloc = ship_account.get_size() + 32,
+        realloc = {
+            let new_size = ship_account.get_size() + 32;
+            msg!("New ShipAccount size after reallocation: {}", new_size);
+            new_size
+        },
         realloc::payer = ship,
         realloc::zero = false,
     )]
@@ -234,16 +246,20 @@ pub struct AddDataAccount<'info> {
     #[account(
         init,
         payer = ship,
-        space = ANCHOR_DISCRIMINATOR + PUBKEY_SIZE + 4 + FINGERPRINT_SIZE * 10080, // 10080 minutes per week, 1440 minutes per day
-        seeds = [b"data_account", ship.key().as_ref(), ship_account.data_accounts.len().to_le_bytes().as_ref()],
+        space = ANCHOR_DISCRIMINATOR + PUBKEY_SIZE + 4 + FINGERPRINT_SIZE * 240, // 10080 minutes per week, 1440 minutes per day, 240 minutes per 4 hours
+        seeds = [b"data_account", ship.key().as_ref()],
         bump
     )]
     pub data_account: Account<'info, DataAccount>,
     #[account(
         init,
         payer = ship,
-        space = ANCHOR_DISCRIMINATOR + 4 + external_observers.len() * PUBKEY_SIZE + 4 + external_observers_keys.len() * 32 ,
-        seeds = [b"external_observers_account", ship.key().as_ref(), timestamp.as_ref()],
+        space = {
+            let new_size = ANCHOR_DISCRIMINATOR + 4 + 4 + external_observers.len() * PUBKEY_SIZE + 4 + external_observers_keys.len() * 32;
+            msg!("New ExternalObserversAccount size: {}", new_size);
+            new_size
+        },
+        seeds = [b"external_observers_account", ship.key().as_ref()],
         bump
     )]
     pub external_observers_account: Account<'info, ExternalObserversAccount>,

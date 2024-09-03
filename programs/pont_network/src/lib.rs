@@ -247,7 +247,7 @@ pub struct AddDataAccount<'info> {
         init,
         payer = ship,
         space = ANCHOR_DISCRIMINATOR + PUBKEY_SIZE + 4 + FINGERPRINT_SIZE * 240, // 10080 minutes per week, 1440 minutes per day, 240 minutes per 4 hours
-        seeds = [b"data_account", ship.key().as_ref()],
+        seeds = [b"data_account", ship.key().as_ref(), ship_account.data_accounts.len().to_le_bytes().as_ref()],
         bump
     )]
     pub data_account: Account<'info, DataAccount>,
@@ -259,7 +259,7 @@ pub struct AddDataAccount<'info> {
             msg!("New ExternalObserversAccount size: {}", new_size);
             new_size
         },
-        seeds = [b"external_observers_account", ship.key().as_ref()],
+        seeds = [b"external_observers_account", data_account.key().as_ref()],
         bump
     )]
     pub external_observers_account: Account<'info, ExternalObserversAccount>,

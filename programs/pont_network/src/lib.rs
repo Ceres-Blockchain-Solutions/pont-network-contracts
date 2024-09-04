@@ -91,7 +91,7 @@ pub mod pont_network {
 
     pub fn add_data_fingerprint(
         ctx: Context<AddDataFingerprint>,
-        data: Vec<u8>,
+        data: [u8; FINGERPRINT_SIZE],
         data_timestamp: u64,
     ) -> Result<()> {
         let data_account = &mut ctx.accounts.data_account;
@@ -112,7 +112,7 @@ pub mod pont_network {
 
     pub fn add_multiple_data_fingerprints(
         ctx: Context<AddDataFingerprint>,
-        data: Vec<Vec<u8>>,
+        data: Vec<[u8; FINGERPRINT_SIZE]>,
         data_timestamps: Vec<u64>,
     ) -> Result<()> {
         assert_eq!(data.len(), data_timestamps.len());
@@ -120,7 +120,7 @@ pub mod pont_network {
         let data_account = &mut ctx.accounts.data_account;
 
         for (data_instance, data_timestamp) in data.iter().zip(data_timestamps.iter()) {
-            let fingerprint = Fingerprint::from(hash(&data_instance).to_bytes());
+            let fingerprint = Fingerprint::from(hash(data_instance).to_bytes());
 
             data_account.fingerprints.push(fingerprint.clone());
 
@@ -162,7 +162,7 @@ pub struct DataAccountInitialized {
 pub struct DataFingerprintAdded {
     pub ship: Pubkey,
     pub fingerprint: Fingerprint,
-    pub data: Vec<u8>,
+    pub data: [u8; FINGERPRINT_SIZE],
     pub data_timestamp: u64,
 }
 

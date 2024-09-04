@@ -14,15 +14,17 @@ pub mod pont_network {
 
     use super::*;
 
-    pub fn initialize_ship(ctx: Context<InitializeShip>) -> Result<()> {
+    pub fn initialize_ship(ctx: Context<InitializeShip>, ship: Pubkey) -> Result<()> {
         let ship_account = &mut ctx.accounts.ship_account;
-        ship_account.ship = *ctx.accounts.ship.key;
+        ship_account.ship = ship;
         ship_account.data_accounts = Vec::new();
+        ship_account.ship_management = *ctx.accounts.ship_management.key;
 
         msg!("Ship account initialized");
 
         emit!(ShipInitialized {
-            ship: *ctx.accounts.ship.key,
+            ship,
+            ship_management: ship_account.ship_management,
         });
 
         Ok(())
@@ -75,16 +77,15 @@ pub mod pont_network {
         Ok(())
     }
 
-    pub fn approve_external_observer(ctx: Context<ApproveExternalObserver>) -> Result<()> {
+    pub fn add_external_observer(ctx: Context<AddExternalObserver>, external_observer_to_be_approved: Pubkey) -> Result<()> {
         let external_observers_account = &mut ctx.accounts.external_observers_account;
-        let external_observer = *ctx.accounts.external_observer.key;
 
         external_observers_account
             .unapproved_external_observers
-            .retain(|&x| x != external_observer);
+            .retain(|&x| x != external_observer_to_be_approved);
         external_observers_account
             .external_observers
-            .push(external_observer);
+            .push(external_observer_to_be_approved);
 
         Ok(())
     }
@@ -163,6 +164,7 @@ impl From<[u8; 32]> for Fingerprint {
 #[event]
 pub struct ShipInitialized {
     pub ship: Pubkey,
+    pub ship_management: Pubkey,
 }
 
 #[event]
@@ -190,12 +192,13 @@ pub struct ExternalObserverRequested {
 #[account]
 pub struct ShipAccount {
     pub ship: Pubkey,
+    pub ship_management: Pubkey,
     pub data_accounts: Vec<Pubkey>,
 }
 
 impl ShipAccount {
     pub fn get_size(&self) -> usize {
-        let size = 8 + 32 + 4 + (self.data_accounts.len() * 32);
+        let size = 8 + PUBKEY_SIZE + PUBKEY_SIZE + 4 + (self.data_accounts.len() * 32);
         msg!("Current ShipAccount size: {}", size);
         size
     }
@@ -229,17 +232,18 @@ impl ExternalObserversAccount {
 }
 
 #[derive(Accounts)]
+#[instruction(ship: Pubkey)]
 pub struct InitializeShip<'info> {
     #[account(
         init,
-        payer = ship,
-        space = 8 + 32 + 4,
+        payer = ship_management,
+        space = 8 + PUBKEY_SIZE + PUBKEY_SIZE + 4,
         seeds = [b"ship_account", ship.key().as_ref()],
         bump
     )]
     pub ship_account: Account<'info, ShipAccount>,
     #[account(mut)]
-    pub ship: Signer<'info>,
+    pub ship_management: Signer<'info>,
     pub system_program: Program<'info, System>,
 }
 
@@ -309,12 +313,13 @@ pub struct ExternalObserverRequest<'info> {
 }
 
 #[derive(Accounts)]
-pub struct ApproveExternalObserver<'info> {
-    #[account(mut)]
+pub struct AddExternalObserver<'info> {
     pub data_account: Account<'info, DataAccount>,
     #[account(mut)]
     pub external_observers_account: Account<'info, ExternalObserversAccount>,
-    pub external_observer: Signer<'info>,
+    #[account(has_one = ship_management)]
+    pub ship_account: Account<'info, ShipAccount>,
+    pub ship_management: Signer<'info>,
 }
 
 #[derive(Accounts)]

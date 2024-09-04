@@ -12,6 +12,7 @@ describe("pont_network", () => {
 	const program = anchor.workspace.PontNetwork as Program<PontNetwork>;
 
 	const ship = anchor.web3.Keypair.generate();
+	const shipManagement = anchor.web3.Keypair.generate();
 	// external observers
 	const eo1 = anchor.web3.Keypair.generate();
 	const eo2 = anchor.web3.Keypair.generate();
@@ -37,15 +38,16 @@ describe("pont_network", () => {
 
 		// Airdrop lamports to the ship account
 		await airdropLamports(ship.publicKey, 1000 * LAMPORTS_PER_SOL); // Airdrop 1000 SOL
-
+		await airdropLamports(shipManagement.publicKey, 1000 * LAMPORTS_PER_SOL);
+		
 		const tx = await program.methods
-			.initializeShip()
+			.initializeShip(ship.publicKey)
 			.accountsStrict({
 				shipAccount,
-				ship: ship.publicKey,
+				shipManagement: shipManagement.publicKey,
 				systemProgram: SystemProgram.programId,
 			})
-			.signers([ship])
+			.signers([shipManagement])
 			.rpc();
 
 		console.log("ShipAccount initialized with transaction signature", tx);
@@ -161,13 +163,14 @@ describe("pont_network", () => {
 	
 		// Approve the external observer
 		const tx = await program.methods
-		  .approveExternalObserver()
+		  .addExternalObserver(externalObserver.publicKey)
 		  .accountsStrict({
 			externalObserversAccount,
-			externalObserver: externalObserver.publicKey,
 			dataAccount,
+			shipAccount: shipAccountAddress,
+			shipManagement: shipManagement.publicKey,
 		  }).
-		  signers([externalObserver])
+		  signers([shipManagement])
 		  .rpc();
 	
 		console.log("External Observer approved with transaction signature", tx);

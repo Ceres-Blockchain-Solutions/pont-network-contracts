@@ -91,7 +91,7 @@ pub mod pont_network {
 
     pub fn add_data_fingerprint(
         ctx: Context<AddDataFingerprint>,
-        data: [u8; FINGERPRINT_SIZE],
+        data: Vec<u8>,
         data_timestamp: u64,
     ) -> Result<()> {
         let data_account = &mut ctx.accounts.data_account;
@@ -112,7 +112,7 @@ pub mod pont_network {
 
     pub fn add_multiple_data_fingerprints(
         ctx: Context<AddDataFingerprint>,
-        data: Vec<[u8; FINGERPRINT_SIZE]>,
+        data: Vec<Vec<u8>>,
         data_timestamps: Vec<u64>,
     ) -> Result<()> {
         assert_eq!(data.len(), data_timestamps.len());
@@ -134,6 +134,21 @@ pub mod pont_network {
 
         Ok(())
     }
+
+    pub fn reallocate_data_account(ctx: Context<ReallocateDataAccount>) -> Result<()> {
+        let data_account = &mut ctx.accounts.data_account;
+        let new_size = data_account.to_account_info().data_len() + 10240;
+        data_account.to_account_info().realloc(new_size, false)?;
+        Ok(())
+    }
+}
+
+pub fn ensure_sufficient_lamports(account: &AccountInfo, required_lamports: u64) -> Result<()> {
+    let current_lamports = account.lamports();
+    if current_lamports < required_lamports {
+        return Err(ProgramError::InsufficientFunds.into());
+    }
+    Ok(())
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
@@ -162,7 +177,7 @@ pub struct DataAccountInitialized {
 pub struct DataFingerprintAdded {
     pub ship: Pubkey,
     pub fingerprint: Fingerprint,
-    pub data: [u8; FINGERPRINT_SIZE],
+    pub data: Vec<u8>,
     pub data_timestamp: u64,
 }
 
@@ -300,4 +315,13 @@ pub struct ApproveExternalObserver<'info> {
     #[account(mut)]
     pub external_observers_account: Account<'info, ExternalObserversAccount>,
     pub external_observer: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct ReallocateDataAccount<'info> {
+    #[account(mut, has_one = ship)]
+    pub data_account: Account<'info, DataAccount>,
+    #[account(mut)]
+    pub ship: Signer<'info>,
+    pub system_program: Program<'info, System>,
 }

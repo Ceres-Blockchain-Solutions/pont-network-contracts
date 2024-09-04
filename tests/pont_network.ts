@@ -197,14 +197,15 @@ describe("pont_network", () => {
 		  );
 	
 		const data = Buffer.from("test data");
-		const dataFingerprint = await blake3(data);
-		console.log("Data Fingerprint: ", dataFingerprint);
-		const uint8Array = Uint8Array.from(Buffer.from(dataFingerprint, "hex"));
-		const numberArray = Array.from(uint8Array);
+
+		const dataFingerprintClient = await blake3(data);
+		// console.log("Data Fingerprint: ", dataFingerprint);
+		// const uint8Array = Uint8Array.from(Buffer.from(dataFingerprint, "hex"));
+		// const numberArray = Array.from(uint8Array);
 		const dataTimestamp = Date.now();
 	
 		const tx = await program.methods
-		  .addDataFingerprint(numberArray, new anchor.BN(dataTimestamp))
+		  .addDataFingerprint(data, new anchor.BN(dataTimestamp))
 		  .accountsStrict({
 			dataAccount,
 			ship: ship.publicKey,
@@ -216,6 +217,15 @@ describe("pont_network", () => {
 	
 		const account = await program.account.dataAccount.fetch(dataAccount);
 		expect(account.fingerprints.length).to.equal(1);
+
+		// Convert byte array (number[]) to Buffer
+		const fingerprintBuffer = Buffer.from(account.fingerprints[0][0]);
+
+		// Convert Buffer to hex string
+		const fingerprintHex = fingerprintBuffer.toString('hex');
+		console.log("Data Fingerprint: ", fingerprintHex);
+
+		expect(fingerprintHex).to.equal(dataFingerprintClient);
 	  });
 
 	  it("Adds Multiple Data Fingerprints", async () => {
@@ -231,15 +241,15 @@ describe("pont_network", () => {
 		  );
 	
 		const data = [Buffer.from("test data 1"), Buffer.from("test data 2"), Buffer.from("test data 3")];
-		const dataFingerprintsPromises = data.map(async (d) => await blake3(d));
-		const dataFingerprints = await Promise.all(dataFingerprintsPromises);
+		// const dataFingerprintsPromises = data.map(async (d) => await blake3(d));
+		// const dataFingerprints = await Promise.all(dataFingerprintsPromises);
 
-		const uint8Arrays = dataFingerprints.map(fingerprint => Uint8Array.from(Buffer.from(fingerprint, "hex")));
-		const numberArrays = uint8Arrays.map(uint8Array => Array.from(uint8Array));
+		// const uint8Arrays = dataFingerprints.map(fingerprint => Uint8Array.from(Buffer.from(fingerprint, "hex")));
+		// const numberArrays = uint8Arrays.map(uint8Array => Array.from(uint8Array));
 		const dataTimestamps = [Date.now(), Date.now() + 1000, Date.now() + 2000];
 	
 		const tx = await program.methods
-		  .addMultipleDataFingerprints(numberArrays, dataTimestamps.map(ts => new anchor.BN(ts)))
+		  .addMultipleDataFingerprints(data, dataTimestamps.map(ts => new anchor.BN(ts)))
 		  .accountsStrict({
 			dataAccount,
 			ship: ship.publicKey,

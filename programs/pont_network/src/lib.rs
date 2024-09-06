@@ -1,3 +1,4 @@
+use itertools::izip;
 use std::vec;
 
 use anchor_lang::prelude::*;
@@ -6,7 +7,7 @@ const ANCHOR_DISCRIMINATOR: usize = 8;
 const PUBKEY_SIZE: usize = 32;
 const FINGERPRINT_SIZE: usize = 32;
 
-declare_id!("ApvfQGqW8kzLyiG8x8PTrWJS7o2uLxXNjns6bYLh3H1R");
+declare_id!("3dnBfuMPHW52smosEsJwsnLGCR56DrphyUG68GqAcVxb");
 
 #[program]
 pub mod pont_network {
@@ -77,7 +78,10 @@ pub mod pont_network {
         Ok(())
     }
 
-    pub fn add_external_observer(ctx: Context<AddExternalObserver>, external_observer_to_be_approved: Pubkey) -> Result<()> {
+    pub fn add_external_observer(
+        ctx: Context<AddExternalObserver>,
+        external_observer_to_be_approved: Pubkey,
+    ) -> Result<()> {
         let external_observers_account = &mut ctx.accounts.external_observers_account;
 
         external_observers_account
@@ -92,20 +96,25 @@ pub mod pont_network {
 
     pub fn add_data_fingerprint(
         ctx: Context<AddDataFingerprint>,
-        data: Vec<u8>,
-        data_timestamp: u64,
+        ciphertext: Vec<u8>,
+        tag: Vec<u8>,
+        iv: Vec<u8>,
+        ciphertext_timestamp: u64,
     ) -> Result<()> {
         let data_account = &mut ctx.accounts.data_account;
 
-        let fingerprint = Fingerprint::from(hash(&data).to_bytes());
+        let fingerprint = Fingerprint::from(hash(&ciphertext).to_bytes());
 
         data_account.fingerprints.push(fingerprint.clone());
 
         emit!(DataFingerprintAdded {
             ship: *ctx.accounts.ship.key,
             fingerprint,
-            data,
-            data_timestamp
+            ciphertext,
+            tag,
+            iv,
+            ciphertext_timestamp,
+            data_account: ctx.accounts.data_account.key(),
         });
 
         Ok(())
@@ -113,23 +122,30 @@ pub mod pont_network {
 
     pub fn add_multiple_data_fingerprints(
         ctx: Context<AddDataFingerprint>,
-        data: Vec<Vec<u8>>,
-        data_timestamps: Vec<u64>,
+        ciphertexts: Vec<Vec<u8>>,
+        tags: Vec<Vec<u8>>,
+        ivs: Vec<Vec<u8>>,
+        ciphertext_timestamps: Vec<u64>,
     ) -> Result<()> {
-        assert_eq!(data.len(), data_timestamps.len());
+        assert_eq!(ciphertexts.len(), ciphertext_timestamps.len());
 
         let data_account = &mut ctx.accounts.data_account;
 
-        for (data_instance, data_timestamp) in data.iter().zip(data_timestamps.iter()) {
-            let fingerprint = Fingerprint::from(hash(data_instance).to_bytes());
+        for (ciphertext_instance, tag_instance, iv_instance, timestamp) in
+            izip!(ciphertexts, tags, ivs, ciphertext_timestamps)
+        {
+            let fingerprint = Fingerprint::from(hash(&ciphertext_instance).to_bytes());
 
             data_account.fingerprints.push(fingerprint.clone());
 
             emit!(DataFingerprintAdded {
                 ship: *ctx.accounts.ship.key,
                 fingerprint,
-                data: data_instance.clone(),
-                data_timestamp: *data_timestamp,
+                ciphertext: ciphertext_instance.clone(),
+                tag: tag_instance,
+                iv: iv_instance,
+                ciphertext_timestamp: timestamp,
+                data_account: data_account.key(),
             });
         }
 
@@ -179,8 +195,11 @@ pub struct DataAccountInitialized {
 pub struct DataFingerprintAdded {
     pub ship: Pubkey,
     pub fingerprint: Fingerprint,
-    pub data: Vec<u8>,
-    pub data_timestamp: u64,
+    pub ciphertext: Vec<u8>,
+    pub tag: Vec<u8>,
+    pub iv: Vec<u8>,
+    pub ciphertext_timestamp: u64,
+    pub data_account: Pubkey,
 }
 
 #[event]

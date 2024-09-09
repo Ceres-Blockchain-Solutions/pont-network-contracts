@@ -5,7 +5,7 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-pont_network = "3dnBfuMPHW52smosEsJwsnLGCR56DrphyUG68GqAcVxb"
+pont_network = "6gdTocGpug1w7cgV1MQXyJDDGPtw7JHM5aNjKB8wY8V6"
 
 [registry]
 url = "https://api.apr.dev"

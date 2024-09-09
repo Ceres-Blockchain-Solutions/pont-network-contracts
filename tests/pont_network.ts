@@ -5,6 +5,9 @@ import { PublicKey, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { expect } from "chai";
 import { blake3 } from 'hash-wasm'
 import crypto from 'crypto';
+import * as ecies25519 from 'ecies-25519';
+import * as encUtils from 'enc-utils';
+import { x25519 } from '@noble/curves/ed25519'
 
 describe("pont_network", () => {
 	// Configure the client to use the local cluster.
@@ -19,8 +22,12 @@ describe("pont_network", () => {
 	const eo2 = anchor.web3.Keypair.generate();
 	const eos = [eo1.publicKey, eo2.publicKey];
 
-	const key = new Uint32Array(8);
-	crypto.getRandomValues(key);
+	const masterKey = new Uint32Array(8);
+	crypto.getRandomValues(masterKey);
+	const keyBytes = new Uint8Array(masterKey.buffer);
+
+	const eo1_x25519pk = x25519.getPublicKey(eo1.secretKey.slice(0, 32));
+	const eo2_x25519pk = x25519.getPublicKey(eo2.secretKey.slice(0, 32));
 
 	async function airdropLamports(ship: PublicKey, amount: number) {
 		const signature = await provider.connection.requestAirdrop(ship, amount);
@@ -75,10 +82,18 @@ describe("pont_network", () => {
 			program.programId
 		);
 
-		const externalObserversKeys = [new Uint8Array(32), new Uint8Array(32)].map(key => Array.from(key)); // Example keys
+		// const externalObserversKeys = [new Uint8Array(32), new Uint8Array(32)].map(key => Array.from(key)); // Example keys
+
+		const encryptedExternalObserversKeys = [
+		  await ecies25519.encrypt(keyBytes, eo1_x25519pk),
+		  await ecies25519.encrypt(keyBytes, eo2_x25519pk)
+		];
+
+		console.log("Encrypted External Observers Keys: ", encryptedExternalObserversKeys);
 
 		const tx = await program.methods
-			.addDataAccount(eos, externalObserversKeys)
+			// .addDataAccount(eos, encryptedExternalObserversKeys.map(key => Array.from(key)))
+			.addDataAccount([], [], [])
 			.accountsStrict({
 				shipAccount: shipAccountAddress,
 				ship: ship.publicKey,
@@ -92,7 +107,8 @@ describe("pont_network", () => {
 		console.log("Data Account added with transaction signature", tx);
 	});
 
-	const externalObserver = anchor.web3.Keypair.generate();
+	const eo3 = anchor.web3.Keypair.generate();
+	const eo3_x25519pk = x25519.getPublicKey(eo3.secretKey.slice(0, 32));
 
 	it("Requests to be an External Observer", async () => {
 		const [shipAccountAddress, bump1] = PublicKey.findProgramAddressSync(
@@ -114,7 +130,7 @@ describe("pont_network", () => {
 
 		// Fund the external observer account
 		const airdropSignature = await provider.connection.requestAirdrop(
-			externalObserver.publicKey,
+			eo3.publicKey,
 			anchor.web3.LAMPORTS_PER_SOL
 		);
 
@@ -127,14 +143,14 @@ describe("pont_network", () => {
 		})
 
 		const tx = await program.methods
-			.externalObserverRequest()
+			.externalObserverRequest(new PublicKey(eo3_x25519pk))
 			.accountsStrict({
 				dataAccount,
 				externalObserversAccount,
-				externalObserver: externalObserver.publicKey,
+				externalObserver: eo3.publicKey,
 				systemProgram: SystemProgram.programId,
 			})
-			.signers([externalObserver])
+			.signers([eo3])
 			.rpc();
 
 		console.log("External Observer requested with transaction signature", tx);
@@ -143,7 +159,7 @@ describe("pont_network", () => {
 
 		// Convert PublicKey objects to strings for comparison
 		const unapprovedExternalObservers = account.unapprovedExternalObservers.map((pk: PublicKey) => pk.toString());
-		const externalObserverPublicKey = externalObserver.publicKey.toString();
+		const externalObserverPublicKey = eo3.publicKey.toString();
 
 		expect(unapprovedExternalObservers).to.include(externalObserverPublicKey);
 	});
@@ -165,14 +181,22 @@ describe("pont_network", () => {
 			program.programId
 		);
 
+		const accountPreTx = await program.account.externalObserversAccount.fetch(externalObserversAccount);
+		console.log("Account Pre Tx: ", accountPreTx);
+		const externalObserverIndex = accountPreTx.unapprovedExternalObservers.findIndex((pk: PublicKey) => pk.equals(eo3.publicKey));
+		const eo_x25519_pk = accountPreTx.externalObserversX25519Pks[externalObserverIndex];
+
+		const encryptedExternalObserverKey = await ecies25519.encrypt(keyBytes, eo_x25519_pk.toBytes())
+
 		// Approve the external observer
 		const tx = await program.methods
-			.addExternalObserver(externalObserver.publicKey)
+			.addExternalObserver(eo3.publicKey,  Array.from(encryptedExternalObserverKey))
 			.accountsStrict({
 				externalObserversAccount,
 				dataAccount,
 				shipAccount: shipAccountAddress,
 				shipManagement: shipManagement.publicKey,
+				systemProgram: SystemProgram.programId,
 			}).
 			signers([shipManagement])
 			.rpc();
@@ -185,10 +209,16 @@ describe("pont_network", () => {
 		// Convert PublicKey objects to strings for comparison
 		const unapprovedExternalObservers = account.unapprovedExternalObservers.map((pk: PublicKey) => pk.toString());
 		const externalObservers = account.externalObservers.map((pk: PublicKey) => pk.toString());
-		const externalObserverPublicKey = externalObserver.publicKey.toString();
+		const externalObserverPublicKey = eo3.publicKey.toString();
+		const externalObserversEncryptedKeys = account.externalObserversMasterKeys.map((key: number[]) => Uint8Array.from(key));
 
 		expect(unapprovedExternalObservers).to.not.include(externalObserverPublicKey);
 		expect(externalObservers).to.include(externalObserverPublicKey);
+		
+		// Decrypt the external observer key
+		const decryptedExternalObserverKey = await ecies25519.decrypt(externalObserversEncryptedKeys[0], eo3.secretKey.slice(0, 32));
+		const decryptedExternalObserverKeyBuffer = Buffer.from(decryptedExternalObserverKey);
+		expect(decryptedExternalObserverKeyBuffer).to.deep.equal(keyBytes);
 	});
 
 	it("Adds a Data Fingerprint", async () => {
@@ -207,7 +237,7 @@ describe("pont_network", () => {
 		const iv = new Uint32Array(3);
 		crypto.getRandomValues(iv);
 
-		const encryptedData = encrypt(data, key, iv);
+		const encryptedData = encrypt(data, masterKey, iv);
 		const ciphertext = encryptedData.ciphertext;
 		const tag = encryptedData.tag;
 		console.log("Encrypted Data: ", encryptedData);
@@ -268,7 +298,7 @@ describe("pont_network", () => {
 		crypto.getRandomValues(ivs[1]);
 		crypto.getRandomValues(ivs[2]);
 
-		const encryptedData = [encrypt(data[0], key, ivs[0]), encrypt(data[1], key, ivs[1]), encrypt(data[2], key, ivs[2])];
+		const encryptedData = [encrypt(data[0], masterKey, ivs[0]), encrypt(data[1], masterKey, ivs[1]), encrypt(data[2], masterKey, ivs[2])];
 		const ciphertexts = [encryptedData[0].ciphertext, encryptedData[1].ciphertext, encryptedData[2].ciphertext];
 		const tags = [encryptedData[0].tag, encryptedData[1].tag, encryptedData[2].tag];
 		console.log("Encrypted Data: ", encryptedData);

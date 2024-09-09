@@ -7,7 +7,7 @@ const ANCHOR_DISCRIMINATOR: usize = 8;
 const PUBKEY_SIZE: usize = 32;
 const FINGERPRINT_SIZE: usize = 32;
 
-declare_id!("3dnBfuMPHW52smosEsJwsnLGCR56DrphyUG68GqAcVxb");
+declare_id!("6gdTocGpug1w7cgV1MQXyJDDGPtw7JHM5aNjKB8wY8V6");
 
 #[program]
 pub mod pont_network {
@@ -34,9 +34,11 @@ pub mod pont_network {
     pub fn add_data_account(
         ctx: Context<AddDataAccount>,
         external_observers: Vec<Pubkey>,
-        external_observers_keys: Vec<[u8; 32]>,
+        external_observers_keys: Vec<[u8; 128]>,
+        external_observers_x25519_pks: Vec<Pubkey>,
     ) -> Result<()> {
         assert_eq!(external_observers.len(), external_observers_keys.len());
+        assert_eq!(external_observers.len(), external_observers_x25519_pks.len());
 
         let ship_account = &mut ctx.accounts.ship_account;
         ship_account
@@ -49,12 +51,13 @@ pub mod pont_network {
 
         let external_observers_account = &mut ctx.accounts.external_observers_account;
         external_observers_account.unapproved_external_observers = Vec::new();
-        external_observers_account.external_observers_keys = external_observers_keys.clone();
+        external_observers_account.external_observers_master_keys = external_observers_keys.clone();
         external_observers_account.external_observers = external_observers.clone();
+        external_observers_account.external_observers_x25519_pks = external_observers_x25519_pks.clone();
 
         emit!(DataAccountInitialized {
             ship: *ctx.accounts.ship.key,
-            data_acc_count: ship_account.data_accounts.len() as u32,
+            data_account: data_account.key(),
             external_observers: external_observers,
             external_observers_keys: external_observers_keys,
         });
@@ -62,13 +65,17 @@ pub mod pont_network {
         Ok(())
     }
 
-    pub fn external_observer_request(ctx: Context<ExternalObserverRequest>) -> Result<()> {
+    pub fn external_observer_request(ctx: Context<ExternalObserverRequest>, external_observer_x25519_pk: Pubkey) -> Result<()> {
         let external_observers_account = &mut ctx.accounts.external_observers_account;
         let external_observer = *ctx.accounts.external_observer.key;
 
         external_observers_account
             .unapproved_external_observers
             .push(external_observer);
+
+        external_observers_account
+            .external_observers_x25519_pks
+            .push(external_observer_x25519_pk);
 
         emit!(ExternalObserverRequested {
             data_account: ctx.accounts.data_account.key(),
@@ -81,6 +88,7 @@ pub mod pont_network {
     pub fn add_external_observer(
         ctx: Context<AddExternalObserver>,
         external_observer_to_be_approved: Pubkey,
+        external_observer_encrypted_master_key: [u8; 128],
     ) -> Result<()> {
         let external_observers_account = &mut ctx.accounts.external_observers_account;
 
@@ -90,6 +98,16 @@ pub mod pont_network {
         external_observers_account
             .external_observers
             .push(external_observer_to_be_approved);
+        external_observers_account.external_observers_master_keys.push(external_observer_encrypted_master_key);
+
+        emit!(ExternalObserverAdded {
+            data_account: ctx.accounts.data_account.key(),
+            external_observer: external_observer_to_be_approved,
+            external_observers_account: ctx.accounts.external_observers_account.key(),
+            ship_account: ctx.accounts.ship_account.key(),
+            ship_management: ctx.accounts.ship_management.key(),
+            external_observer_encrypted_master_key,
+        });
 
         Ok(())
     }
@@ -186,9 +204,9 @@ pub struct ShipInitialized {
 #[event]
 pub struct DataAccountInitialized {
     pub ship: Pubkey,
-    pub data_acc_count: u32,
+    pub data_account: Pubkey,
     pub external_observers: Vec<Pubkey>,
-    pub external_observers_keys: Vec<[u8; 32]>,
+    pub external_observers_keys: Vec<[u8; 128]>,
 }
 
 #[event]
@@ -206,6 +224,16 @@ pub struct DataFingerprintAdded {
 pub struct ExternalObserverRequested {
     pub data_account: Pubkey,
     pub external_observer: Pubkey,
+}
+
+#[event]
+pub struct ExternalObserverAdded {
+    pub data_account: Pubkey,
+    pub external_observer: Pubkey,
+    pub external_observers_account: Pubkey,
+    pub ship_account: Pubkey,
+    pub ship_management: Pubkey,
+    pub external_observer_encrypted_master_key: [u8; 128]
 }
 
 #[account]
@@ -233,7 +261,8 @@ pub struct DataAccount {
 pub struct ExternalObserversAccount {
     pub unapproved_external_observers: Vec<Pubkey>,
     pub external_observers: Vec<Pubkey>,
-    pub external_observers_keys: Vec<[u8; 32]>,
+    pub external_observers_x25519_pks: Vec<Pubkey>,
+    pub external_observers_master_keys: Vec<[u8; 128]>,
 }
 
 impl ExternalObserversAccount {
@@ -242,9 +271,11 @@ impl ExternalObserversAccount {
             + 4
             + (self.unapproved_external_observers.len() * PUBKEY_SIZE)
             + 4
+            + (self.external_observers_x25519_pks.len() * PUBKEY_SIZE)
+            + 4
             + (self.external_observers.len() * PUBKEY_SIZE)
             + 4
-            + (self.external_observers_keys.len() * 32);
+            + (self.external_observers_master_keys.len() * 128);
         msg!("Current ExternalObserversAccount size: {}", size);
         size
     }
@@ -267,7 +298,7 @@ pub struct InitializeShip<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(external_observers: Vec<Pubkey>, external_observers_keys: Vec<[u8; 32]>,)]
+#[instruction(external_observers: Vec<Pubkey>, external_observers_keys: Vec<[u8; 128]>, external_observers_x25519_pks: Vec<Pubkey>)]
 pub struct AddDataAccount<'info> {
     #[account(
         mut,
@@ -293,7 +324,7 @@ pub struct AddDataAccount<'info> {
         init,
         payer = ship,
         space = {
-            let new_size = ANCHOR_DISCRIMINATOR + 4 + 4 + external_observers.len() * PUBKEY_SIZE + 4 + external_observers_keys.len() * 32;
+            let new_size = ANCHOR_DISCRIMINATOR + 4 + 4 + external_observers_x25519_pks.len() * PUBKEY_SIZE + 4 + external_observers.len() * PUBKEY_SIZE + 4 + external_observers_keys.len() * 128;
             msg!("New ExternalObserversAccount size: {}", new_size);
             new_size
         },
@@ -315,12 +346,13 @@ pub struct AddDataFingerprint<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction(external_observer_x25519_pk: Pubkey)]
 pub struct ExternalObserverRequest<'info> {
     #[account(
         mut,
         seeds = [b"external_observers_account", data_account.key().as_ref()],
         bump,
-        realloc = external_observers_account.get_size() + PUBKEY_SIZE,
+        realloc = external_observers_account.get_size() + PUBKEY_SIZE + PUBKEY_SIZE,
         realloc::payer = external_observer,
         realloc::zero = false
     )]
@@ -334,11 +366,18 @@ pub struct ExternalObserverRequest<'info> {
 #[derive(Accounts)]
 pub struct AddExternalObserver<'info> {
     pub data_account: Account<'info, DataAccount>,
-    #[account(mut)]
+    #[account(
+        mut,
+        realloc = external_observers_account.get_size() + 128,
+        realloc::payer = ship_management,
+        realloc::zero = false
+    )]
     pub external_observers_account: Account<'info, ExternalObserversAccount>,
     #[account(has_one = ship_management)]
     pub ship_account: Account<'info, ShipAccount>,
+    #[account(mut)]
     pub ship_management: Signer<'info>,
+    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]

@@ -9,28 +9,29 @@ import * as ecies25519 from 'ecies-25519';
 import * as encUtils from 'enc-utils';
 import { x25519 } from '@noble/curves/ed25519'
 
-describe("pont_network", () => {
-	// Configure the client to use the local cluster.
-	anchor.setProvider(anchor.AnchorProvider.env());
-	const provider = anchor.AnchorProvider.env();
-	const program = anchor.workspace.PontNetwork as Program<PontNetwork>;
+describe("pont_network_deterministic", () => {
+    // Configure the client to use the local cluster.
+    anchor.setProvider(anchor.AnchorProvider.env());
+    const provider = anchor.AnchorProvider.env();
+    const program = anchor.workspace.PontNetwork as Program<PontNetwork>;
 
-	const ship = anchor.web3.Keypair.generate();
-	const shipManagement = anchor.web3.Keypair.generate();
-	// external observers
-	const eo1 = anchor.web3.Keypair.generate();
-	const eo2 = anchor.web3.Keypair.generate();
-	const eos = [eo1.publicKey, eo2.publicKey];
+    // Use fixed keypairs for deterministic tests
+    const ship = anchor.web3.Keypair.fromSeed(new Uint8Array(32).fill(1));
+    const shipManagement = anchor.web3.Keypair.fromSeed(new Uint8Array(32).fill(2));
+    // external observers
+    const eo1 = anchor.web3.Keypair.fromSeed(new Uint8Array(32).fill(3));
+    const eo2 = anchor.web3.Keypair.fromSeed(new Uint8Array(32).fill(4));
+    const eos = [eo1.publicKey, eo2.publicKey];
 
-	const masterKey = new Uint32Array(8);
-	crypto.getRandomValues(masterKey);
-	const keyBytes = new Uint8Array(masterKey.buffer);
+    // Use fixed master key for deterministic tests
+    const masterKey = new Uint32Array(8).fill(5);
+    const keyBytes = new Uint8Array(masterKey.buffer);
 
-	const eo1_x25519pk = x25519.getPublicKey(eo1.secretKey.slice(0, 32));
-	const eo2_x25519pk = x25519.getPublicKey(eo2.secretKey.slice(0, 32));
+    const eo1_x25519pk = x25519.getPublicKey(eo1.secretKey.slice(0, 32));
+    const eo2_x25519pk = x25519.getPublicKey(eo2.secretKey.slice(0, 32));
 
-	async function airdropLamports(ship: PublicKey, amount: number) {
-		const signature = await provider.connection.requestAirdrop(ship, amount);
+    async function airdropLamports(ship: PublicKey, amount: number) {
+        const signature = await provider.connection.requestAirdrop(ship, amount);
 
 		const latestBlockHash = await provider.connection.getLatestBlockhash();
 
@@ -39,9 +40,9 @@ describe("pont_network", () => {
 			lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
 			signature: signature,
 		})
-	}
+    }
 
-	it("Initializes a ShipAccount", async () => {
+    it("Initializes a ShipAccount deterministically", async () => {
 		const [shipAccount, bump1] = PublicKey.findProgramAddressSync(
 			[Buffer.from("ship_account"), ship.publicKey.toBuffer()],
 			program.programId
@@ -64,7 +65,7 @@ describe("pont_network", () => {
 		console.log("ShipAccount initialized with transaction signature", tx);
 	});
 
-	it("Adds a Data Account", async () => {
+    it("Adds a Data Account deterministically", async () => {
 		const [shipAccountAddress, bump1] = PublicKey.findProgramAddressSync(
 			[Buffer.from("ship_account"), ship.publicKey.toBuffer()],
 			program.programId
@@ -107,10 +108,10 @@ describe("pont_network", () => {
 		console.log("Data Account added with transaction signature", tx);
 	});
 
-	const eo3 = anchor.web3.Keypair.generate();
+    const eo3 = anchor.web3.Keypair.fromSeed(new Uint8Array(32).fill(6));
 	const eo3_x25519pk = x25519.getPublicKey(eo3.secretKey.slice(0, 32));
 
-	it("Requests to be an External Observer", async () => {
+	it("Requests to be an External Observer deterministically", async () => {
 		const [shipAccountAddress, bump1] = PublicKey.findProgramAddressSync(
 			[Buffer.from("ship_account"), ship.publicKey.toBuffer()],
 			program.programId
@@ -164,7 +165,7 @@ describe("pont_network", () => {
 		expect(unapprovedExternalObservers).to.include(externalObserverPublicKey);
 	});
 
-	it("Approves an External Observer", async () => {
+    it("Approves an External Observer deterministically", async () => {
 		const [shipAccountAddress, bump1] = PublicKey.findProgramAddressSync(
 			[Buffer.from("ship_account"), ship.publicKey.toBuffer()],
 			program.programId
@@ -221,7 +222,153 @@ describe("pont_network", () => {
 		expect(decryptedExternalObserverKeyBuffer).to.deep.equal(keyBytes);
 	});
 
-	it("Adds a Data Fingerprint", async () => {
+	it("Adds Fingerprint data every 2 seconds for 16 seconds", async () => {
+		const [shipAccountAddress, bump1] = PublicKey.findProgramAddressSync(
+			[Buffer.from("ship_account"), ship.publicKey.toBuffer()],
+			program.programId
+		);
+		const shipAccount = await program.account.shipAccount.fetch(shipAccountAddress);
+	
+		const [dataAccount, bump2] = PublicKey.findProgramAddressSync(
+			[Buffer.from("data_account"), ship.publicKey.toBuffer(), new anchor.BN(shipAccount.dataAccounts.length - 1, "le").toArrayLike(Buffer, "le", 8)],
+			program.programId
+		);
+	
+		const addFingerprint = async (data: Buffer, iv: Uint32Array) => {
+			const encryptedData = encrypt(data, masterKey, iv);
+			const serializedEncryptedData = serializeEncryptedData(encryptedData);
+			const ciphertextBuffer = serializedEncryptedData.ciphertext;
+			const tagBuffer = serializedEncryptedData.tag;
+			const ivBuffer = serializedEncryptedData.iv;
+			const dataTimestamp = Date.now();
+	
+			const tx = await program.methods
+				.addDataFingerprint(ciphertextBuffer, tagBuffer, ivBuffer, new anchor.BN(dataTimestamp))
+				.accountsStrict({
+					dataAccount,
+					ship: ship.publicKey,
+				})
+				.signers([ship])
+				.rpc();
+	
+			console.log("Data Fingerprint added with transaction signature", tx);
+		};
+	
+		// Define the object representing values from Ship sensors
+		const sensorData = {
+			temperature: 22.5,
+			humidity: 60,
+			pressure: 1013,
+			latitude: 37.7749,
+			longitude: -122.4194,
+			timestamp: Date.now()
+		};
+
+		const data = Buffer.from(JSON.stringify(sensorData));
+		const ivs = [
+			new Uint32Array(3).fill(100),
+			new Uint32Array(3).fill(101),
+			new Uint32Array(3).fill(102),
+			new Uint32Array(3).fill(103),
+			new Uint32Array(3).fill(104),
+			new Uint32Array(3).fill(105),
+			new Uint32Array(3).fill(106),
+			new Uint32Array(3).fill(107)
+		];
+	
+		for (let i = 0; i < 8; i++) {
+			await addFingerprint(data, ivs[i]);
+			await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for 2 seconds
+		}
+	
+		const account = await program.account.dataAccount.fetch(dataAccount);
+		expect(account.fingerprints.length).to.equal(8);
+	
+		for (let i = 0; i < 8; i++) {
+			const fingerprintBuffer = Buffer.from(account.fingerprints[i][0]);
+			const fingerprintHex = fingerprintBuffer.toString('hex');
+			console.log(`Data Fingerprint ${i + 1}: `, fingerprintHex);
+		}
+	});
+
+	it("Adds Fingerprint data in batches every 2 seconds for 16 seconds", async () => {
+		await new Promise(resolve => setTimeout(resolve, 10000)); // Wait for 10 seconds
+
+		const [shipAccountAddress, bump1] = PublicKey.findProgramAddressSync(
+			[Buffer.from("ship_account"), ship.publicKey.toBuffer()],
+			program.programId
+		);
+		const shipAccount = await program.account.shipAccount.fetch(shipAccountAddress);
+	
+		const [dataAccount, bump2] = PublicKey.findProgramAddressSync(
+			[Buffer.from("data_account"), ship.publicKey.toBuffer(), new anchor.BN(shipAccount.dataAccounts.length - 1, "le").toArrayLike(Buffer, "le", 8)],
+			program.programId
+		);
+	
+		const addFingerprints = async (data: Buffer[], ivs: Uint32Array[]) => {
+			const ciphertextBuffers: Buffer[] = [];
+			const tagBuffers: Buffer[] = [];
+			const ivBuffers: Buffer[] = [];
+			const dataTimestamps: anchor.BN[] = [];
+
+			for (let i = 0; i < data.length; i++) {
+				const encryptedData = encrypt(data[i], masterKey, ivs[i]);
+				const serializedEncryptedData = serializeEncryptedData(encryptedData);
+				ciphertextBuffers.push(serializedEncryptedData.ciphertext);
+				tagBuffers.push(serializedEncryptedData.tag);
+				ivBuffers.push(serializedEncryptedData.iv);
+				dataTimestamps.push(new anchor.BN(Date.now()));
+			}
+	
+			const tx = await program.methods
+				.addMultipleDataFingerprints(ciphertextBuffers, tagBuffers, ivBuffers, dataTimestamps)
+				.accountsStrict({
+					dataAccount,
+					ship: ship.publicKey,
+				})
+				.signers([ship])
+				.rpc();
+	
+			console.log("Data Multiple Fingerprints added with transaction signature", tx);
+		};
+	
+		// Define the object representing values from Ship sensors
+		const sensorData = {
+			temperature: 22.5,
+			humidity: 60,
+			pressure: 1013,
+			latitude: 37.7749,
+			longitude: -122.4194,
+			timestamp: Date.now()
+		};
+
+		const data = [Buffer.from(JSON.stringify(sensorData)), Buffer.from(JSON.stringify(sensorData)), Buffer.from(JSON.stringify(sensorData))];
+		const ivs = [];
+		for (let i = 108; i < 108 + 24; i++) {
+			ivs.push(new Uint32Array(3).fill(i));
+		}
+
+		const groupedIvs = [];
+		for (let i = 0; i < ivs.length; i += 3) {
+			groupedIvs.push(ivs.slice(i, i + 3));
+		}
+	
+		for (let i = 0; i < 8; i++) {
+			await addFingerprints(data, groupedIvs[i]);
+			await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for 2 seconds
+		}
+	
+		const account = await program.account.dataAccount.fetch(dataAccount);
+		expect(account.fingerprints.length).to.equal(8);
+	
+		for (let i = 0; i < 8; i++) {
+			const fingerprintBuffer = Buffer.from(account.fingerprints[i][0]);
+			const fingerprintHex = fingerprintBuffer.toString('hex');
+			console.log(`Data Fingerprint ${i + 1}: `, fingerprintHex);
+		}
+	});
+
+    it("Adds a Data Fingerprint deterministically", async () => {
 		const [shipAccountAddress, bump1] = PublicKey.findProgramAddressSync(
 			[Buffer.from("ship_account"), ship.publicKey.toBuffer()],
 			program.programId
@@ -233,10 +380,11 @@ describe("pont_network", () => {
 			program.programId
 		);
 
+        console.log("DataAccount:", dataAccount);
+
 		const dataMock = { data1: "test data1", data2: "test data2", data3: "test data3", data4: "test data4", data5: "test data5" };
 		const data = Buffer.from("test data");
-		const iv = new Uint32Array(3);
-		crypto.getRandomValues(iv);
+		const iv = new Uint32Array(3).fill(0);
 
 		const encryptedData = encrypt(data, masterKey, iv);
 		const ciphertext = encryptedData.ciphertext;
@@ -280,7 +428,7 @@ describe("pont_network", () => {
 		expect(fingerprintHex).to.equal(encryptedDataFingerprint);
 	});
 
-	it("Adds Multiple Data Fingerprints", async () => {
+    it("Adds Multiple Data Fingerprints deterministically", async () => {
 		const [shipAccountAddress, bump1] = PublicKey.findProgramAddressSync(
 			[Buffer.from("ship_account"), ship.publicKey.toBuffer()],
 			program.programId
@@ -294,10 +442,7 @@ describe("pont_network", () => {
 
 		const data = [Buffer.from("test data 1"), Buffer.from("test data 2"), Buffer.from("test data 3")];
 		
-		const ivs = [new Uint32Array(3), new Uint32Array(3), new Uint32Array(3)];
-		crypto.getRandomValues(ivs[0]);
-		crypto.getRandomValues(ivs[1]);
-		crypto.getRandomValues(ivs[2]);
+		const ivs = [new Uint32Array(3).fill(1), new Uint32Array(3).fill(2), new Uint32Array(3).fill(3)];
 
 		const encryptedData = [encrypt(data[0], masterKey, ivs[0]), encrypt(data[1], masterKey, ivs[1]), encrypt(data[2], masterKey, ivs[2])];
 		const ciphertexts = [encryptedData[0].ciphertext, encryptedData[1].ciphertext, encryptedData[2].ciphertext];
@@ -337,51 +482,42 @@ describe("pont_network", () => {
 		expect(Buffer.from(account.fingerprints[2][0]).toString('hex')).to.equal(encryptedDataFingerprint[1]);
 		expect(Buffer.from(account.fingerprints[3][0]).toString('hex')).to.equal(encryptedDataFingerprint[2]);
 	});
+
+    // Encrypt data
+    const encrypt = (plaintext, key, iv) => {
+        const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+        let ciphertext = cipher.update(plaintext, 'utf8', 'hex');
+        ciphertext += cipher.final('hex');
+        const tag = cipher.getAuthTag().toString('hex'); // Get the authentication tag
+        return {
+            ciphertext,
+            tag,
+            iv
+        };
+    };
+
+    // Decrypt data
+    const decrypt = (ciphertext, tag, iv, key) => {
+        const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(iv, 'hex'));
+        decipher.setAuthTag(Buffer.from(tag, 'hex')); // Set the authentication tag
+        let decrypted = decipher.update(ciphertext, 'hex', 'utf8');
+        decrypted += decipher.final('utf8');
+        return decrypted;
+    };
+
+    function serializeEncryptedData(encryptedData: { ciphertext: string; tag: string; iv: Uint32Array }): {
+        ciphertext: Buffer,
+        tag: Buffer,
+        iv: Buffer
+    } {
+        const ciphertextBytes = Buffer.from(encryptedData.ciphertext, 'hex');
+        const tagBytes = Buffer.from(encryptedData.tag, 'hex');
+        const ivBytes = encryptedData.iv.buffer;
+    
+        return {
+            ciphertext: ciphertextBytes,
+            tag: tagBytes,
+            iv: Buffer.from(ivBytes)
+        }
+    }
 });
-
-// Encrypt data
-const encrypt = (plaintext, key, iv) => {
-	const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-	let ciphertext = cipher.update(plaintext, 'utf8', 'hex');
-	ciphertext += cipher.final('hex');
-	const tag = cipher.getAuthTag().toString('hex'); // Get the authentication tag
-	return {
-		ciphertext,
-		tag,
-		iv
-		// iv: iv.toString('hex')
-	};
-};
-
-// Decrypt data
-const decrypt = (ciphertext, tag, iv, key) => {
-	const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(iv, 'hex'));
-	decipher.setAuthTag(Buffer.from(tag, 'hex')); // Set the authentication tag
-	let decrypted = decipher.update(ciphertext, 'hex', 'utf8');
-	decrypted += decipher.final('utf8');
-	return decrypted;
-};
-
-function serializeEncryptedData(encryptedData: { ciphertext: string; tag: string; iv: Uint32Array }): {
-	ciphertext: Buffer,
-	tag: Buffer,
-	iv: Buffer
-} {
-	const ciphertextBytes = Buffer.from(encryptedData.ciphertext, 'hex');
-	const tagBytes = Buffer.from(encryptedData.tag, 'hex');
-	const ivBytes = encryptedData.iv.buffer;
-
-	// const totalLength = ciphertextBytes.length + tagBytes.length + ivBytes.length;
-	// const serializedData = new Uint8Array(totalLength);
-
-	// serializedData.set(ciphertextBytes, 0);
-	// serializedData.set(tagBytes, ciphertextBytes.length);
-	// serializedData.set(ivBytes, ciphertextBytes.length + tagBytes.length);
-
-	// return serializedData;
-	return {
-		ciphertext: ciphertextBytes,
-		tag: tagBytes,
-		iv: Buffer.from(ivBytes)
-	}
-}

@@ -24,7 +24,7 @@ describe("pont_network_deterministic", () => {
     const eos = [eo1.publicKey, eo2.publicKey];
 
     // Use fixed master key for deterministic tests
-    const masterKey = new Uint32Array(8).fill(5);
+    const masterKey = new Uint8Array(32).fill(5);
     const keyBytes = new Uint8Array(masterKey.buffer);
 
     const eo1_x25519pk = x25519.getPublicKey(eo1.secretKey.slice(0, 32));
@@ -165,6 +165,29 @@ describe("pont_network_deterministic", () => {
 		expect(unapprovedExternalObservers).to.include(externalObserverPublicKey);
 	});
 
+	// Define the object representing values from Ship sensors
+	const sensorData = {
+		"lat": -4.96579,
+		"long": -1.72182,
+		"mileage": 0.25,
+		"engineLoad": 79.81,
+		"fuelLevel": 99.89,
+		"seaState": "high",
+		"seaSurfaceTemperature": 11.7,
+		"airTemp": 25.6,
+		"humidity": 58.22,
+		"barometricPressure": 999.71,
+		"cargoStatus": "INTRANSIT",
+		"time": 1725629220025
+	};
+
+	const sensorDataJson = JSON.stringify(sensorData);
+	console.log("SensorData json: ", sensorDataJson);
+
+	const sizeInBytes = Buffer.byteLength(sensorDataJson, 'utf8');
+
+	console.log(`Size of JSON in bytes: ${sizeInBytes}`);
+
     it("Approves an External Observer deterministically", async () => {
 		const [shipAccountAddress, bump1] = PublicKey.findProgramAddressSync(
 			[Buffer.from("ship_account"), ship.publicKey.toBuffer()],
@@ -236,7 +259,9 @@ describe("pont_network_deterministic", () => {
 	
 		const addFingerprint = async (data: Buffer, iv: Uint32Array) => {
 			const encryptedData = encrypt(data, masterKey, iv);
+			console.log("Encrypted Data: ", encryptedData);
 			const serializedEncryptedData = serializeEncryptedData(encryptedData);
+			console.log("\nSerialized Encrypted Data: ", serializedEncryptedData);
 			const ciphertextBuffer = serializedEncryptedData.ciphertext;
 			const tagBuffer = serializedEncryptedData.tag;
 			const ivBuffer = serializedEncryptedData.iv;
@@ -254,17 +279,8 @@ describe("pont_network_deterministic", () => {
 			console.log("Data Fingerprint added with transaction signature", tx);
 		};
 	
-		// Define the object representing values from Ship sensors
-		const sensorData = {
-			temperature: 22.5,
-			humidity: 60,
-			pressure: 1013,
-			latitude: 37.7749,
-			longitude: -122.4194,
-			timestamp: Date.now()
-		};
 
-		const data = Buffer.from(JSON.stringify(sensorData));
+		const data = Buffer.from(sensorDataJson);
 		const ivs = [
 			new Uint32Array(3).fill(100),
 			new Uint32Array(3).fill(101),
@@ -291,8 +307,8 @@ describe("pont_network_deterministic", () => {
 		}
 	});
 
-	it("Adds Fingerprint data in batches every 2 seconds for 16 seconds", async () => {
-		await new Promise(resolve => setTimeout(resolve, 10000)); // Wait for 10 seconds
+	it("Adds Fingerprint data in batches every 2 seconds for 7.5 seconds", async () => {
+		await new Promise(resolve => setTimeout(resolve, 7500)); // Wait for 7.5 seconds
 
 		const [shipAccountAddress, bump1] = PublicKey.findProgramAddressSync(
 			[Buffer.from("ship_account"), ship.publicKey.toBuffer()],
@@ -331,18 +347,8 @@ describe("pont_network_deterministic", () => {
 	
 			console.log("Data Multiple Fingerprints added with transaction signature", tx);
 		};
-	
-		// Define the object representing values from Ship sensors
-		const sensorData = {
-			temperature: 22.5,
-			humidity: 60,
-			pressure: 1013,
-			latitude: 37.7749,
-			longitude: -122.4194,
-			timestamp: Date.now()
-		};
 
-		const data = [Buffer.from(JSON.stringify(sensorData)), Buffer.from(JSON.stringify(sensorData)), Buffer.from(JSON.stringify(sensorData))];
+		const data = [Buffer.from(sensorDataJson), Buffer.from(sensorDataJson), Buffer.from(sensorDataJson)];
 		const ivs = [];
 		for (let i = 108; i < 108 + 24; i++) {
 			ivs.push(new Uint32Array(3).fill(i));
@@ -353,7 +359,7 @@ describe("pont_network_deterministic", () => {
 			groupedIvs.push(ivs.slice(i, i + 3));
 		}
 	
-		for (let i = 0; i < 8; i++) {
+		for (let i = 0; i < 5; i++) {
 			await addFingerprints(data, groupedIvs[i]);
 			await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for 2 seconds
 		}

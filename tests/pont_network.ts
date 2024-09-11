@@ -22,7 +22,7 @@ describe("pont_network", () => {
 	const eo2 = anchor.web3.Keypair.generate();
 	const eos = [eo1.publicKey, eo2.publicKey];
 
-	const masterKey = new Uint32Array(8);
+	const masterKey = new Uint8Array(32);
 	crypto.getRandomValues(masterKey);
 	const keyBytes = new Uint8Array(masterKey.buffer);
 

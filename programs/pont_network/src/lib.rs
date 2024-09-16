@@ -7,7 +7,7 @@ const ANCHOR_DISCRIMINATOR: usize = 8;
 const PUBKEY_SIZE: usize = 32;
 const FINGERPRINT_SIZE: usize = 32;
 
-declare_id!("6gdTocGpug1w7cgV1MQXyJDDGPtw7JHM5aNjKB8wY8V6");
+declare_id!("3dnBfuMPHW52smosEsJwsnLGCR56DrphyUG68GqAcVxb");
 
 #[program]
 pub mod pont_network {

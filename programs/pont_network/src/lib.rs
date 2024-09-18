@@ -38,7 +38,10 @@ pub mod pont_network {
         external_observers_x25519_pks: Vec<Pubkey>,
     ) -> Result<()> {
         assert_eq!(external_observers.len(), external_observers_keys.len());
-        assert_eq!(external_observers.len(), external_observers_x25519_pks.len());
+        assert_eq!(
+            external_observers.len(),
+            external_observers_x25519_pks.len()
+        );
 
         let ship_account = &mut ctx.accounts.ship_account;
         ship_account
@@ -51,9 +54,11 @@ pub mod pont_network {
 
         let external_observers_account = &mut ctx.accounts.external_observers_account;
         external_observers_account.unapproved_external_observers = Vec::new();
+        external_observers_account.unapproved_external_observers_x25519_pks = Vec::new();
         external_observers_account.external_observers_master_keys = external_observers_keys.clone();
         external_observers_account.external_observers = external_observers.clone();
-        external_observers_account.external_observers_x25519_pks = external_observers_x25519_pks.clone();
+        external_observers_account.external_observers_x25519_pks =
+            external_observers_x25519_pks.clone();
 
         emit!(DataAccountInitialized {
             ship: *ctx.accounts.ship.key,
@@ -65,24 +70,34 @@ pub mod pont_network {
         Ok(())
     }
 
-    pub fn external_observer_request(ctx: Context<ExternalObserverRequest>, external_observer_x25519_pk: Pubkey) -> Result<()> {
+    pub fn external_observer_request(
+        ctx: Context<ExternalObserverRequest>,
+        external_observer_x25519_pk: Pubkey,
+    ) -> Result<()> {
         let external_observers_account = &mut ctx.accounts.external_observers_account;
         let external_observer = *ctx.accounts.external_observer.key;
 
-        external_observers_account
+        if !external_observers_account
             .unapproved_external_observers
-            .push(external_observer);
+            .contains(&external_observer)
+        {
+            external_observers_account
+                .unapproved_external_observers
+                .push(external_observer);
 
-        external_observers_account
-            .external_observers_x25519_pks
-            .push(external_observer_x25519_pk);
+            external_observers_account
+                .unapproved_external_observers_x25519_pks
+                .push(external_observer_x25519_pk);
 
-        emit!(ExternalObserverRequested {
-            data_account: ctx.accounts.data_account.key(),
-            external_observer: external_observer,
-        });
+            emit!(ExternalObserverRequested {
+                data_account: ctx.accounts.data_account.key(),
+                external_observer: external_observer,
+            });
 
-        Ok(())
+            Ok(())
+        } else {
+            Err(CustomErrors::ExternalObserverAlreadyRequested.into())
+        }
     }
 
     pub fn add_external_observer(
@@ -92,13 +107,30 @@ pub mod pont_network {
     ) -> Result<()> {
         let external_observers_account = &mut ctx.accounts.external_observers_account;
 
+        let eo_index = external_observers_account
+            .unapproved_external_observers
+            .iter()
+            .position(|&x| x == external_observer_to_be_approved)
+            .unwrap();
+
         external_observers_account
             .unapproved_external_observers
-            .retain(|&x| x != external_observer_to_be_approved);
+            .remove(eo_index);
+        let eo_x25519_pk = external_observers_account
+            .unapproved_external_observers_x25519_pks
+            .remove(eo_index);
+
         external_observers_account
             .external_observers
             .push(external_observer_to_be_approved);
-        external_observers_account.external_observers_master_keys.push(external_observer_encrypted_master_key);
+
+        external_observers_account
+            .external_observers_x25519_pks
+            .push(eo_x25519_pk);
+
+        external_observers_account
+            .external_observers_master_keys
+            .push(external_observer_encrypted_master_key);
 
         emit!(ExternalObserverAdded {
             data_account: ctx.accounts.data_account.key(),
@@ -233,7 +265,7 @@ pub struct ExternalObserverAdded {
     pub external_observers_account: Pubkey,
     pub ship_account: Pubkey,
     pub ship_management: Pubkey,
-    pub external_observer_encrypted_master_key: [u8; 128]
+    pub external_observer_encrypted_master_key: [u8; 128],
 }
 
 #[account]
@@ -260,6 +292,7 @@ pub struct DataAccount {
 #[account]
 pub struct ExternalObserversAccount {
     pub unapproved_external_observers: Vec<Pubkey>,
+    pub unapproved_external_observers_x25519_pks: Vec<Pubkey>,
     pub external_observers: Vec<Pubkey>,
     pub external_observers_x25519_pks: Vec<Pubkey>,
     pub external_observers_master_keys: Vec<[u8; 128]>,
@@ -270,6 +303,8 @@ impl ExternalObserversAccount {
         let size = 8
             + 4
             + (self.unapproved_external_observers.len() * PUBKEY_SIZE)
+            + 4
+            + (self.unapproved_external_observers_x25519_pks.len() * PUBKEY_SIZE)
             + 4
             + (self.external_observers_x25519_pks.len() * PUBKEY_SIZE)
             + 4
@@ -324,7 +359,7 @@ pub struct AddDataAccount<'info> {
         init,
         payer = ship,
         space = {
-            let new_size = ANCHOR_DISCRIMINATOR + 4 + 4 + external_observers_x25519_pks.len() * PUBKEY_SIZE + 4 + external_observers.len() * PUBKEY_SIZE + 4 + external_observers_keys.len() * 128;
+            let new_size = ANCHOR_DISCRIMINATOR + 4 + 4 + 4 + external_observers_x25519_pks.len() * PUBKEY_SIZE + 4 + external_observers.len() * PUBKEY_SIZE + 4 + external_observers_keys.len() * 128;
             msg!("New ExternalObserversAccount size: {}", new_size);
             new_size
         },
@@ -387,4 +422,9 @@ pub struct ReallocateDataAccount<'info> {
     #[account(mut)]
     pub ship: Signer<'info>,
     pub system_program: Program<'info, System>,
+}
+
+#[error_code]
+pub enum CustomErrors {
+    ExternalObserverAlreadyRequested,
 }

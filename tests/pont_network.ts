@@ -25,7 +25,8 @@ describe("pont_network", () => {
 	const ship3 = anchor.web3.Keypair.generate();
 	const ship4 = anchor.web3.Keypair.generate();
 
-	const shipManagement = anchor.web3.Keypair.generate();
+	const shipManagement = anchor.web3.Keypair.fromSeed(new Uint8Array(32));
+	console.log("Ship Management secret key: ", shipManagement.secretKey);
 	// external observers
 	const eo1 = anchor.web3.Keypair.generate();
 	const eo2 = anchor.web3.Keypair.generate();
@@ -76,6 +77,7 @@ describe("pont_network", () => {
 		await airdropLamports(ship2.publicKey, 1000 * LAMPORTS_PER_SOL);
 		await airdropLamports(ship3.publicKey, 1000 * LAMPORTS_PER_SOL);
 		await airdropLamports(ship4.publicKey, 1000 * LAMPORTS_PER_SOL);
+		await airdropLamports(new PublicKey("TN9afBn533hvXpQ1s5uexBUksR7yMUMjcfgLLc1QKrz"), 1000 * LAMPORTS_PER_SOL);
 		await airdropLamports(shipManagement.publicKey, 1000 * LAMPORTS_PER_SOL);
 
 		const tx1 = await program.methods
@@ -261,7 +263,7 @@ describe("pont_network", () => {
 
 		const accountPreTx = await program.account.externalObserversAccount.fetch(externalObserversAccount);
 		const externalObserverIndex = accountPreTx.unapprovedExternalObservers.findIndex((pk: PublicKey) => pk.equals(eo3.publicKey));
-		const eo_x25519_pk = accountPreTx.externalObserversX25519Pks[externalObserverIndex];
+		const eo_x25519_pk = accountPreTx.unapprovedExternalObserversX25519Pks[externalObserverIndex];
 
 		const encryptedExternalObserverKey = await ecies25519.encrypt(keyBytes, eo_x25519_pk.toBytes())
 

@@ -33,7 +33,7 @@ describe("pont_network", () => {
 	const eos = [eo1.publicKey, eo2.publicKey];
 
 	const masterKey = new Uint8Array(32);
-	crypto.getRandomValues(masterKey);
+	// crypto.getRandomValues(masterKey);
 	const keyBytes = new Uint8Array(masterKey.buffer);
 
 	const eo1_x25519pk = x25519.getPublicKey(eo1.secretKey.slice(0, 32));
@@ -299,6 +299,23 @@ describe("pont_network", () => {
 		expect(decryptedExternalObserverKeyBuffer).to.deep.equal(keyBytes);
 	});
 
+	const sensorData = {
+		"lat": -4.96579,
+		"long": -1.72182,
+		"mileage": 0.25,
+		"engineLoad": 79.81,
+		"fuelLevel": 99.89,
+		"seaState": "high",
+		"seaSurfaceTemperature": 11.7,
+		"airTemp": 25.6,
+		"humidity": 58.22,
+		"barometricPressure": 999.71,
+		"cargoStatus": "INTRANSIT",
+		"time": 1725629220025
+	};
+	const sensorDataJson = JSON.stringify(sensorData);
+	const sensorDataBuffer = Buffer.from(sensorDataJson);
+	
 	it("Adds a Data Fingerprint", async () => {
 		const [shipAccountAddress, bump1] = PublicKey.findProgramAddressSync(
 			[Buffer.from("ship_account"), ship1.publicKey.toBuffer()],
@@ -311,12 +328,10 @@ describe("pont_network", () => {
 			program.programId
 		);
 
-		const dataMock = { data1: "test data1", data2: "test data2", data3: "test data3", data4: "test data4", data5: "test data5" };
-		const data = Buffer.from("test data");
 		const iv = new Uint32Array(3);
 		crypto.getRandomValues(iv);
 
-		const encryptedData = encrypt(data, masterKey, iv);
+		const encryptedData = encrypt(sensorDataBuffer, masterKey, iv);
 		const ciphertext = encryptedData.ciphertext;
 		const tag = encryptedData.tag;
 		console.log("Encrypted Data: ", encryptedData);
@@ -327,7 +342,7 @@ describe("pont_network", () => {
 		const ivBuffer = serializedEncryptedData.iv;
 		console.log("\nSerialized Encrypted Data: ", serializedEncryptedData);
 
-		const dataFingerprint = await blake3(data);
+		const dataFingerprint = await blake3(sensorDataBuffer);
 		const encryptedDataFingerprint = await blake3(ciphertextBuffer);
 		const dataTimestamp = Date.now();
 
@@ -374,7 +389,7 @@ describe("pont_network", () => {
 			program.programId
 		);
 
-		const data = [Buffer.from("test data 1"), Buffer.from("test data 2"), Buffer.from("test data 3")];
+		const data = [sensorDataBuffer, sensorDataBuffer, sensorDataBuffer];
 
 		const ivs = [new Uint32Array(3), new Uint32Array(3), new Uint32Array(3)];
 		crypto.getRandomValues(ivs[0]);

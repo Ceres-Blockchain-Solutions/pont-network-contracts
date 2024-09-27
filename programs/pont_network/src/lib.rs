@@ -36,6 +36,7 @@ pub mod pont_network {
         external_observers: Vec<Pubkey>,
         external_observers_keys: Vec<[u8; 128]>,
         external_observers_x25519_pks: Vec<Pubkey>,
+        timestamp: u64,
     ) -> Result<()> {
         assert_eq!(external_observers.len(), external_observers_keys.len());
         assert_eq!(
@@ -47,6 +48,9 @@ pub mod pont_network {
         ship_account
             .data_accounts
             .push(ctx.accounts.data_account.key());
+        ship_account
+            .data_account_starting_timestamps
+            .push(timestamp);
 
         let data_account = &mut ctx.accounts.data_account;
         data_account.ship = *ctx.accounts.ship.key;
@@ -273,11 +277,18 @@ pub struct ShipAccount {
     pub ship: Pubkey,
     pub ship_management: Pubkey,
     pub data_accounts: Vec<Pubkey>,
+    pub data_account_starting_timestamps: Vec<u64>,
 }
 
 impl ShipAccount {
     pub fn get_size(&self) -> usize {
-        let size = 8 + PUBKEY_SIZE + PUBKEY_SIZE + 4 + (self.data_accounts.len() * 32);
+        let size = 8
+            + PUBKEY_SIZE
+            + PUBKEY_SIZE
+            + 4
+            + (self.data_accounts.len() * 32)
+            + 4
+            + (self.data_account_starting_timestamps.len() * 8);
         msg!("Current ShipAccount size: {}", size);
         size
     }
@@ -322,7 +333,7 @@ pub struct InitializeShip<'info> {
     #[account(
         init,
         payer = ship_management,
-        space = 8 + PUBKEY_SIZE + PUBKEY_SIZE + 4,
+        space = 8 + PUBKEY_SIZE + PUBKEY_SIZE + 4 + 4,
         seeds = [b"ship_account", ship.key().as_ref()],
         bump
     )]
@@ -339,7 +350,7 @@ pub struct AddDataAccount<'info> {
         mut,
         has_one = ship,
         realloc = {
-            let new_size = ship_account.get_size() + 32;
+            let new_size = ship_account.get_size() + 32 + 8;
             msg!("New ShipAccount size after reallocation: {}", new_size);
             new_size
         },

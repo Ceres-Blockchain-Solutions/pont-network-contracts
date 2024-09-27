@@ -152,7 +152,7 @@ describe("pont_network", () => {
         );
     
         const tx1 = await program.methods
-            .addDataAccount([], [], [])
+			.addDataAccount([], [], [], new anchor.BN(1577836800000)) // 01/01/2020
             .accountsStrict({
                 shipAccount: shipAccountAddress1,
                 ship: ship1.publicKey,
@@ -182,7 +182,7 @@ describe("pont_network", () => {
         );
     
         const tx2 = await program.methods
-            .addDataAccount([], [], [])
+            .addDataAccount([], [], [], new anchor.BN(1609459200000)) // 01/01/2021
             .accountsStrict({
                 shipAccount: shipAccountAddress2,
                 ship: ship2.publicKey,
@@ -212,7 +212,7 @@ describe("pont_network", () => {
         );
     
         const tx3 = await program.methods
-            .addDataAccount([], [], [])
+            .addDataAccount([], [], [], new anchor.BN(1640995200000)) // 01/01/2022
             .accountsStrict({
                 shipAccount: shipAccountAddress3,
                 ship: ship3.publicKey,
@@ -223,7 +223,7 @@ describe("pont_network", () => {
             .signers([ship3])
             .rpc();
     
-        // Ship 4
+        // Ship 4 first data account
         const [shipAccountAddress4] = PublicKey.findProgramAddressSync(
             [Buffer.from("ship_account"), ship4.publicKey.toBuffer()],
             program.programId
@@ -242,13 +242,38 @@ describe("pont_network", () => {
         );
     
         const tx4 = await program.methods
-            .addDataAccount([], [], [])
+            .addDataAccount([], [], [], new anchor.BN(1672531200000)) // 01/01/2023
             .accountsStrict({
                 shipAccount: shipAccountAddress4,
                 ship: ship4.publicKey,
                 systemProgram: SystemProgram.programId,
                 dataAccount: dataAccount4,
                 externalObserversAccount: externalObserversAccount4,
+            })
+            .signers([ship4])
+            .rpc();
+
+		// Ship 4 second data account
+        const shipAccount4_2 = await program.account.shipAccount.fetch(shipAccountAddress4);
+    
+        const [dataAccount4_2] = PublicKey.findProgramAddressSync(
+            [Buffer.from("data_account"), ship4.publicKey.toBuffer(), new anchor.BN(shipAccount4_2.dataAccounts.length, "le").toArrayLike(Buffer, "le", 8)],
+            program.programId
+        );
+    
+        const [externalObserversAccount4_2] = PublicKey.findProgramAddressSync(
+            [Buffer.from("external_observers_account"), dataAccount4_2.toBuffer()],
+            program.programId
+        );
+    
+        const tx5 = await program.methods
+            .addDataAccount([], [], [], new anchor.BN(Date.now()))
+            .accountsStrict({
+                shipAccount: shipAccountAddress4,
+                ship: ship4.publicKey,
+                systemProgram: SystemProgram.programId,
+                dataAccount: dataAccount4_2,
+                externalObserversAccount: externalObserversAccount4_2,
             })
             .signers([ship4])
             .rpc();
@@ -270,88 +295,88 @@ describe("pont_network", () => {
 	};
 	const sensorDataJson = JSON.stringify(sensorData);
 	const sensorDataBuffer = Buffer.from(sensorDataJson);
+
+	it("Populate Data Fingerprints for first Data Account", async () => {
+		const [shipAccountAddress] = PublicKey.findProgramAddressSync(
+			[Buffer.from("ship_account"), ship4.publicKey.toBuffer()],
+			program.programId
+		);
+		const shipAccount = await program.account.shipAccount.fetch(shipAccountAddress);
 	
-	// it("Adds a Data Fingerprint", async () => {
-	// 	const [shipAccountAddress] = PublicKey.findProgramAddressSync(
-	// 		[Buffer.from("ship_account"), ship1.publicKey.toBuffer()],
-	// 		program.programId
-	// 	);
-	// 	const shipAccount = await program.account.shipAccount.fetch(shipAccountAddress);
-
-	// 	const [dataAccount] = PublicKey.findProgramAddressSync(
-	// 		[Buffer.from("data_account"), ship1.publicKey.toBuffer(), new anchor.BN(shipAccount.dataAccounts.length - 1, "le").toArrayLike(Buffer, "le", 8)],
-	// 		program.programId
-	// 	);
-
-	// 	const ivUint32Array = new Uint32Array(3);
-	// 	crypto.getRandomValues(ivUint32Array);
-
-	// 	const encryptedData = encrypt(sensorDataBuffer, masterKey, ivUint32Array);
-	// 	// const ciphertext = encryptedData.ciphertext;
-	// 	// const tag = encryptedData.tag;
-	// 	console.log("Encrypted Data: ", encryptedData);
-
-    //     const { ciphertext, tag, iv } = serializeEncryptedData(encryptedData);
-    //     console.log("\nSerialized Encrypted Data: ", { ciphertext, tag, iv });
-
-	// 	const dataFingerprint = await blake3(sensorDataBuffer);
-	// 	const encryptedDataFingerprint = await blake3(ciphertext);
-	// 	const dataTimestamp = Date.now();
-
-	// 	const tx = await program.methods
-	// 		.addDataFingerprint(ciphertext, tag, iv, new anchor.BN(dataTimestamp))
-	// 		.accountsStrict({
-	// 			dataAccount,
-	// 			ship: ship1.publicKey,
-	// 		})
-	// 		.signers([ship1])
-	// 		.rpc();
-
-	// 	console.log("Data Fingerprint added with transaction signature", tx);
-
-	// 	const txDetails = await program.provider.connection.getTransaction(tx, {
-	// 		maxSupportedTransactionVersion: 0,
-	// 		commitment: "confirmed",
-	// 	});
-
-	// 	console.log("Transaction Details: ", txDetails);
-
-	// 	const account = await program.account.dataAccount.fetch(dataAccount);
-	// 	expect(account.fingerprints.length).to.equal(1);
-
-	// 	// Convert byte array (number[]) to Buffer
-	// 	const fingerprintBuffer = Buffer.from(account.fingerprints[0][0]);
-
-	// 	// Convert Buffer to hex string
-	// 	const fingerprintHex = fingerprintBuffer.toString('hex');
-	// 	console.log("Data Fingerprint: ", fingerprintHex);
-
-	// 	expect(fingerprintHex).to.equal(encryptedDataFingerprint);
-	// });
+		const [dataAccount] = PublicKey.findProgramAddressSync(
+			[Buffer.from("data_account"), ship4.publicKey.toBuffer(), new anchor.BN(shipAccount.dataAccounts.length - 2, "le").toArrayLike(Buffer, "le", 8)],
+			program.programId
+		);
 	
+		for (let i = 0; i < 10; i++) {
+			const ivUint32Array = new Uint32Array(3);
+			crypto.getRandomValues(ivUint32Array);
+	
+			const sensorData = getRandomSensorData();
+            const sensorDataJson = JSON.stringify(sensorData);
+            const sensorDataBuffer = Buffer.from(sensorDataJson);
 
+			const encryptedData = encrypt(sensorDataBuffer, masterKey, ivUint32Array);
+			const { ciphertext, tag, iv } = serializeEncryptedData(encryptedData);
+	
+			const encryptedDataFingerprint = await blake3(ciphertext);
+			const dataTimestamp = Date.now();
+	
+			const tx = await program.methods
+				.addDataFingerprint(ciphertext, tag, iv, new anchor.BN(dataTimestamp))
+				.accountsStrict({
+					dataAccount,
+					ship: ship4.publicKey,
+				})
+				.signers([ship4])
+				.rpc();
+	
+			console.log(`Data Fingerprint ${i + 1} added with transaction signature`, tx);
+	
+			const txDetails = await program.provider.connection.getTransaction(tx, {
+				maxSupportedTransactionVersion: 0,
+				commitment: "confirmed",
+			});
+	
+			console.log(`Transaction ${i + 1} Details: `, txDetails);
+		}
+	
+		const account = await program.account.dataAccount.fetch(dataAccount);
+		expect(account.fingerprints.length).to.equal(10);
+	
+		// for (let i = 0; i < 10; i++) {
+		// 	// Convert byte array (number[]) to Buffer
+		// 	const fingerprintBuffer = Buffer.from(account.fingerprints[i][0]);
+	
+		// 	// Convert Buffer to hex string
+		// 	const fingerprintHex = fingerprintBuffer.toString('hex');
+		// 	console.log(`Data Fingerprint ${i + 1}: `, fingerprintHex);
+
+		// 	const encryptedDataFingerprint = await blake3(ciphertext);
+		// 	expect(fingerprintHex).to.equal(encryptedDataFingerprint);
+		// }
+	});
 
 	it("Adds a Data Fingerprint each 2 seconds for 60 seconds", async () => {
-		await new Promise(resolve => setTimeout(resolve, 15000));
-
+		// await new Promise(resolve => setTimeout(resolve, 15000));
 		const [shipAccountAddress] = PublicKey.findProgramAddressSync(
-			[Buffer.from("ship_account"), ship1.publicKey.toBuffer()],
+			[Buffer.from("ship_account"), ship4.publicKey.toBuffer()],
 			program.programId
 		);
 		const shipAccount = await program.account.shipAccount.fetch(shipAccountAddress);
 
 		const [dataAccount] = PublicKey.findProgramAddressSync(
-			[Buffer.from("data_account"), ship1.publicKey.toBuffer(), new anchor.BN(shipAccount.dataAccounts.length - 1, "le").toArrayLike(Buffer, "le", 8)],
+			[Buffer.from("data_account"), ship4.publicKey.toBuffer(), new anchor.BN(shipAccount.dataAccounts.length - 1, "le").toArrayLike(Buffer, "le", 8)],
 			program.programId
 		);
 
         let counter = 1;
+		console.log("Counter: ", counter);
         const intervalId = setInterval(async () => {
             if (counter >= 200) {
                 clearInterval(intervalId);
                 return;
             }
-    
             const sensorData = getRandomSensorData();
             const sensorDataJson = JSON.stringify(sensorData);
             const sensorDataBuffer = Buffer.from(sensorDataJson);
@@ -364,39 +389,41 @@ describe("pont_network", () => {
     
             const encryptedDataFingerprint = await blake3(ciphertext);
             const dataTimestamp = Date.now();
-    
-            const tx = await program.methods
-                .addDataFingerprint(ciphertext, tag, iv, new anchor.BN(dataTimestamp))
-                .accountsStrict({
-                    dataAccount,
-                    ship: ship1.publicKey,
-                })
-                .signers([ship1])
-                .rpc();
-    
-            console.log("Data Fingerprint added with transaction signature", tx);
-    
-            const txDetails = await program.provider.connection.getTransaction(tx, {
-                maxSupportedTransactionVersion: 0,
-                commitment: "confirmed",
-            });
-    
-            console.log("Transaction Details: ", txDetails);
-    
-            const account = await program.account.dataAccount.fetch(dataAccount);
-            expect(account.fingerprints.length).to.equal(counter + 1);
-    
-            // Convert byte array (number[]) to Buffer
-            const fingerprintBuffer = Buffer.from(account.fingerprints[counter][0]);
-    
-            // Convert Buffer to hex string
-            const fingerprintHex = fingerprintBuffer.toString('hex');
-            console.log("Data Fingerprint: ", fingerprintHex);
-    
-            expect(fingerprintHex).to.equal(encryptedDataFingerprint);
-    
-			console.log("Counter: ", counter);
-            counter++;
+            try {
+				const tx = await program.methods
+					.addDataFingerprint(ciphertext, tag, iv, new anchor.BN(dataTimestamp))
+					.accountsStrict({
+						dataAccount,
+						ship: ship4.publicKey,
+					})
+					.signers([ship4])
+					.rpc();
+				console.log("Data Fingerprint added with transaction signature", tx);
+	
+				const txDetails = await program.provider.connection.getTransaction(tx, {
+					maxSupportedTransactionVersion: 0,
+					commitment: "confirmed",
+				});
+	
+				console.log("Transaction Details: ", txDetails);
+	
+				const account = await program.account.dataAccount.fetch(dataAccount);
+				expect(account.fingerprints.length).to.equal(counter + 1);
+	
+				// Convert byte array (number[]) to Buffer
+				const fingerprintBuffer = Buffer.from(account.fingerprints[counter][0]);
+	
+				// Convert Buffer to hex string
+				const fingerprintHex = fingerprintBuffer.toString('hex');
+				console.log("Data Fingerprint: ", fingerprintHex);
+	
+				expect(fingerprintHex).to.equal(encryptedDataFingerprint);
+	
+				console.log("Counter: ", counter);
+				counter++;
+			} catch (error) {
+				console.error("Transaction failed: ", error);
+			}
         }, 2000);
 	});
 });

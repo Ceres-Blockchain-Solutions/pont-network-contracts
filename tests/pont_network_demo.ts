@@ -23,7 +23,7 @@ describe("pont_network", () => {
 	
 	const ship2 = anchor.web3.Keypair.generate();
 	const ship3 = anchor.web3.Keypair.generate();
-	const ship4 = anchor.web3.Keypair.generate();
+	const ship4 = anchor.web3.Keypair.fromSeed(new Uint8Array(32).fill(99));
 
 	const shipManagement = anchor.web3.Keypair.fromSeed(new Uint8Array(32));
 	console.log("Ship Management secret key: ", shipManagement.secretKey);

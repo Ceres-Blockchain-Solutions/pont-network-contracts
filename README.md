@@ -10,55 +10,63 @@ anchor test
 
 ## Core instructions
 
-```rust
-pub fn initialize_ship(ctx: Context<InitializeShip>, ship: Pubkey)
-```
+1. **Initialize ship**
 
-Ship management must initialize a ship once.
+	Ship management must initialize a ship once.
+	```rust
+	pub fn initialize_ship(ctx: Context<InitializeShip>, ship: Pubkey)
+	```
+	
+	<br/>
 
----
+2. **Add Data Account**
+   
+ 	 The ship initializes a new sailing.
+	```rust
+	pub fn add_data_account(
+		ctx: Context<AddDataAccount>,
+		external_observers: Vec<Pubkey>,
+		external_observers_keys: Vec<[u8; 128]>,
+		external_observers_x25519_pks: Vec<Pubkey>,
+		timestamp: u64)
+	```
+	<br/>
+ 
+3. **The ship management initializes a new sailing.**
+   
+   	Observer stations can request access to data.
+	```rust
+	pub fn external_observer_request(
+		ctx: Context<ExternalObserverRequest>,
+		external_observer_x25519_pk: Pubkey)
+	```
 
-```rust
-pub fn add_data_account(
-	ctx: Context<AddDataAccount>,
-	external_observers: Vec<Pubkey>,
-	external_observers_keys: Vec<[u8; 128]>,
-	external_observers_x25519_pks: Vec<Pubkey>,
-	timestamp: u64)
-```
+	
+	<br/>
 
-The ship management initializes a new sailing.
+4. **Add External Observer**
+   
+   	Ship management can approve access to the data.
+	```rust
+	pub fn add_external_observer(
+		ctx: Context<AddExternalObserver>,
+		external_observer_to_be_approved: Pubkey,
+		external_observer_encrypted_master_key: [u8; 128])
+	```
+	
+	
+	<br/>
 
----
-
-```rust
-pub fn external_observer_request(
-	ctx: Context<ExternalObserverRequest>,
-	external_observer_x25519_pk: Pubkey)
-```
-
-Observer stations can request access to data.
-
----
-
-```rust
-pub fn add_external_observer(
-	ctx: Context<AddExternalObserver>,
-	external_observer_to_be_approved: Pubkey,
-	external_observer_encrypted_master_key: [u8; 128])
-```
-
-Ship management can approve access to the data.
-
----
-
-```rust
-pub fn add_data_fingerprint(
-	ctx: Context<AddDataFingerprint>,
-	ciphertext: Vec<u8>,
-	tag: Vec<u8>,
-	iv: Vec<u8>,
-	ciphertext_timestamp: u64)
-```
-
-The ship can submit encrypted sensor data to the Solana blockchain.
+5. **Add Data Fingeprint**
+   
+	The ship can submit encrypted sensor data to the Solana blockchain.
+	```rust
+	pub fn add_data_fingerprint(
+		ctx: Context<AddDataFingerprint>,
+		ciphertext: Vec<u8>,
+		tag: Vec<u8>,
+		iv: Vec<u8>,
+		ciphertext_timestamp: u64)
+	```
+	
+	

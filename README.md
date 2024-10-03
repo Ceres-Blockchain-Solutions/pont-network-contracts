@@ -1,6 +1,6 @@
 # Pont Network Contracts
 
-This repository contains code for Pont Network Program on Solana blockchain. Program enables ship management and observer stations to track data emitting from ships sensors, check their integrity and control access to that data.
+This repository contains the code for the Pont Network Program on the Solana blockchain. The program enables ship management and observer stations to track data emitted from ship sensors, verify its integrity, and control access to that data.
 
 ```bash
 git clone https://github.com/Ceres-Blockchain-Solutions/pont-network-contracts.git
@@ -14,7 +14,7 @@ anchor test
 pub fn initialize_ship(ctx: Context<InitializeShip>, ship: Pubkey)
 ```
 
-Ship management needs to initialize ship once.
+Ship management must initialize a ship once.
 
 ---
 
@@ -27,7 +27,7 @@ pub fn add_data_account(
 	timestamp: u64)
 ```
 
-Ship initializes new sailing.
+The ship management initializes a new sailing.
 
 ---
 
@@ -48,7 +48,7 @@ pub fn add_external_observer(
 	external_observer_encrypted_master_key: [u8; 128])
 ```
 
-Ship management can approve access to data.
+Ship management can approve access to the data.
 
 ---
 
@@ -61,4 +61,4 @@ pub fn add_data_fingerprint(
 	ciphertext_timestamp: u64)
 ```
 
-Ship can submit encrypted sensor data to Solana blockchain.
+The ship can submit encrypted sensor data to the Solana blockchain.

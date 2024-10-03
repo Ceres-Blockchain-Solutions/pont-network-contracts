@@ -24,8 +24,7 @@ pub fn add_data_account(
 	external_observers: Vec<Pubkey>,
 	external_observers_keys: Vec<[u8; 128]>,
 	external_observers_x25519_pks: Vec<Pubkey>,
-	timestamp: u64,
-	)
+	timestamp: u64)
 ```
 
 Ship initializes new sailing.
@@ -35,8 +34,7 @@ Ship initializes new sailing.
 ```rust
 pub fn external_observer_request(
 	ctx: Context<ExternalObserverRequest>,
-	external_observer_x25519_pk: Pubkey,
-	)
+	external_observer_x25519_pk: Pubkey)
 ```
 
 Observer stations can request access to data.
@@ -47,8 +45,7 @@ Observer stations can request access to data.
 pub fn add_external_observer(
 	ctx: Context<AddExternalObserver>,
 	external_observer_to_be_approved: Pubkey,
-	external_observer_encrypted_master_key: [u8; 128],
-	)
+	external_observer_encrypted_master_key: [u8; 128])
 ```
 
 Ship management can approve access to data.
@@ -61,8 +58,7 @@ pub fn add_data_fingerprint(
 	ciphertext: Vec<u8>,
 	tag: Vec<u8>,
 	iv: Vec<u8>,
-	ciphertext_timestamp: u64,
-	)
+	ciphertext_timestamp: u64)
 ```
 
 Ship can submit encrypted sensor data to Solana blockchain.

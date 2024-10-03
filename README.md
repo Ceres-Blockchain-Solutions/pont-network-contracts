@@ -1,6 +1,6 @@
 # Pont Network Contracts
 
-This repository contains code for Pont Network Program on Solana blockchain. Program enables owners of ship management and observer stations to track data emitting from ships sensors, check their integrity and control access to that data.
+This repository contains code for Pont Network Program on Solana blockchain. Program enables ship management and observer stations to track data emitting from ships sensors, check their integrity and control access to that data.
 
 ```bash
 git clone https://github.com/Ceres-Blockchain-Solutions/pont-network-contracts.git

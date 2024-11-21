@@ -8,6 +8,8 @@ import crypto from 'crypto';
 import * as ecies25519 from 'ecies-25519';
 import * as encUtils from 'enc-utils';
 import { x25519 } from '@noble/curves/ed25519'
+import { TOKEN_PROGRAM_ID } from "@coral-xyz/anchor/dist/cjs/utils/token";
+import { getAssociatedTokenAddress, getAssociatedTokenAddressSync } from "@solana/spl-token";
 
 describe("pont_network", () => {
     const ship1 = anchor.web3.Keypair.generate();
@@ -24,6 +26,10 @@ describe("pont_network", () => {
     const ship2 = anchor.web3.Keypair.generate();
     const ship3 = anchor.web3.Keypair.generate();
     const ship4 = anchor.web3.Keypair.fromSeed(new Uint8Array(32).fill(99));
+
+    const vc1 = anchor.web3.Keypair.generate();
+    const vc2 = anchor.web3.Keypair.generate();
+    const vc3 = anchor.web3.Keypair.generate();
 
     const shipManagement = anchor.web3.Keypair.fromSeed(new Uint8Array(32));
     console.log("Ship Management secret key: ", shipManagement.secretKey);
@@ -64,6 +70,9 @@ describe("pont_network", () => {
         await airdropLamports(eo3.publicKey, 1000 * LAMPORTS_PER_SOL);
         await airdropLamports(shipManagement.publicKey, 1000 * LAMPORTS_PER_SOL);
         await airdropLamports(new PublicKey("TN9afBn533hvXpQ1s5uexBUksR7yMUMjcfgLLc1QKrz"), 1000 * LAMPORTS_PER_SOL);
+        await airdropLamports(vc1.publicKey, 1000 * LAMPORTS_PER_SOL);
+        await airdropLamports(vc2.publicKey, 1000 * LAMPORTS_PER_SOL);
+        await airdropLamports(vc3.publicKey, 1000 * LAMPORTS_PER_SOL);
     });
 
     it("Initializes a ShipAccounts", async () => {
@@ -279,74 +288,133 @@ describe("pont_network", () => {
             .rpc();
     });
 
-    // it("Populate Data Fingerprints for first Data Account", async () => {
-    //     const [shipAccountAddress] = PublicKey.findProgramAddressSync(
-    //         [Buffer.from("ship_account"), ship4.publicKey.toBuffer()],
-    //         program.programId
-    //     );
-    //     const shipAccount = await program.account.shipAccount.fetch(shipAccountAddress);
+    it("Fundraising", async () => {
+        await program.methods.startFundraising().accounts({
+            user: shipManagement.publicKey,
+        }).signers([shipManagement]).rpc();
+    });
 
-    //     const [dataAccount] = PublicKey.findProgramAddressSync(
-    //         [Buffer.from("data_account"), ship4.publicKey.toBuffer(), new anchor.BN(shipAccount.dataAccounts.length - 2, "le").toArrayLike(Buffer, "le", 8)],
-    //         program.programId
-    //     );
+    it("Contribute", async () => {
+        const tx1 = await program.methods.contribute(new anchor.BN(100 * LAMPORTS_PER_SOL)).accounts({
+            user: vc1.publicKey
+        }).signers([vc1]).rpc();
 
-    //     const batches = [initialBatch];
-    //     const timestampIncrement = 5000;
+        const tx2 = await program.methods.contribute(new anchor.BN(200 * LAMPORTS_PER_SOL)).accounts({
+            user: vc2.publicKey
+        }).signers([vc2]).rpc();
 
-    //     for (let i = 1; i < 10; i++) {
-    //         const nextBatch = generateNextBatch(batches[i - 1], timestampIncrement);
-    //         batches.push(nextBatch);
-    //     }
+        const t3 = await program.methods.contribute(new anchor.BN(300 * LAMPORTS_PER_SOL)).accounts({
+            user: vc3.publicKey
+        }).signers([vc3]).rpc();
+    });
 
-    //     for (let i = 0; i < 10; i++) {
-    //         const ivUint32Array = new Uint32Array(3);
-    //         crypto.getRandomValues(ivUint32Array);
+    it("Stake", async () => {
+        const tx1 = await program.methods.stake(new anchor.BN(100 * LAMPORTS_PER_SOL)).accounts({
+            sender: vc1.publicKey,
+            recipient: vc1.publicKey
+        }).signers([vc1]).rpc();
 
-    //         const sensorData = batches[i];
-    //         const sensorDataJson = JSON.stringify(sensorData);
-    //         const sensorDataBuffer = Buffer.from(sensorDataJson);
+        const tx2 = await program.methods.stake(new anchor.BN(200 * LAMPORTS_PER_SOL)).accounts({
+            sender: vc2.publicKey,
+            recipient: vc2.publicKey
+        }).signers([vc2]).rpc();
 
-    //         const encryptedData = encrypt(sensorDataBuffer, masterKey, ivUint32Array);
-    //         const { ciphertext, tag, iv } = serializeEncryptedData(encryptedData);
+        const tx3 = await program.methods.stake(new anchor.BN(300 * LAMPORTS_PER_SOL)).accounts({
+            sender: vc3.publicKey,
+            recipient: vc3.publicKey
+        }).signers([vc3]).rpc();
 
-    //         const encryptedDataFingerprint = await blake3(ciphertext);
-    //         const dataTimestamp = Date.now();
+        console.log("Test: ", (await program.account.fundraisingAccount.all())[0].account.userStakingInfo);
+    });
 
-    //         const tx = await program.methods
-    //             .addDataFingerprint(ciphertext, tag, iv, new anchor.BN(dataTimestamp))
-    //             .accountsStrict({
-    //                 dataAccount,
-    //                 ship: ship4.publicKey,
-    //             })
-    //             .signers([ship4])
-    //             .rpc();
+    it("Populate Data Fingerprints for first Data Account", async () => {
+        const [shipAccountAddress] = PublicKey.findProgramAddressSync(
+            [Buffer.from("ship_account"), ship4.publicKey.toBuffer()],
+            program.programId
+        );
+        const shipAccount = await program.account.shipAccount.fetch(shipAccountAddress);
 
-    //         console.log(`Data Fingerprint ${i + 1} added with transaction signature`, tx);
+        const [dataAccount] = PublicKey.findProgramAddressSync(
+            [Buffer.from("data_account"), ship4.publicKey.toBuffer(), new anchor.BN(shipAccount.dataAccounts.length - 2, "le").toArrayLike(Buffer, "le", 8)],
+            program.programId
+        );
 
-    //         const txDetails = await program.provider.connection.getTransaction(tx, {
-    //             maxSupportedTransactionVersion: 0,
-    //             commitment: "confirmed",
-    //         });
+        const batches = [initialBatch];
+        const timestampIncrement = 5000;
 
-    //         console.log(`Transaction ${i + 1} Details: `, txDetails);
-    //     }
+        for (let i = 1; i < 10; i++) {
+            const nextBatch = generateNextBatch(batches[i - 1], timestampIncrement);
+            batches.push(nextBatch);
+        }
 
-    //     const account = await program.account.dataAccount.fetch(dataAccount);
-    //     expect(account.fingerprints.length).to.equal(10);
+        for (let i = 0; i < 10; i++) {
+            const ivUint32Array = new Uint32Array(3);
+            crypto.getRandomValues(ivUint32Array);
 
-    //     // for (let i = 0; i < 10; i++) {
-    //     // 	// Convert byte array (number[]) to Buffer
-    //     // 	const fingerprintBuffer = Buffer.from(account.fingerprints[i][0]);
+            const sensorData = batches[i];
+            const sensorDataJson = JSON.stringify(sensorData);
+            const sensorDataBuffer = Buffer.from(sensorDataJson);
 
-    //     // 	// Convert Buffer to hex string
-    //     // 	const fingerprintHex = fingerprintBuffer.toString('hex');
-    //     // 	console.log(`Data Fingerprint ${i + 1}: `, fingerprintHex);
+            const encryptedData = encrypt(sensorDataBuffer, masterKey, ivUint32Array);
+            const { ciphertext, tag, iv } = serializeEncryptedData(encryptedData);
 
-    //     // 	const encryptedDataFingerprint = await blake3(ciphertext);
-    //     // 	expect(fingerprintHex).to.equal(encryptedDataFingerprint);
-    //     // }
-    // });
+            const dataTimestamp = Date.now();
+
+            const tx = await program.methods
+                .addDataFingerprint(ciphertext.subarray(0, 10), tag, iv, new anchor.BN(dataTimestamp))
+                .accountsPartial({
+                    dataAccount,
+                    ship: ship4.publicKey,
+                    systemProgram: SystemProgram.programId,
+                })
+                .signers([ship4])
+                .rpc();
+
+            console.log(`Data Fingerprint ${i + 1} added with transaction signature`, tx);
+
+            const txDetails = await program.provider.connection.getTransaction(tx, {
+                maxSupportedTransactionVersion: 0,
+                commitment: "confirmed",
+            });
+
+            console.log(`Transaction ${i + 1} Details: `, txDetails);
+
+        }
+
+        const account = await program.account.dataAccount.fetch(dataAccount);
+        expect(account.fingerprints.length).to.equal(10);
+    });
+
+    it("Claim rewards", async () => {
+        const tokenMint = (await program.account.fundraisingAccount.all())[0].account.tokenMint;
+
+        const vc1BeforeLamports = (await program.provider.connection.getAccountInfo(vc1.publicKey)).lamports;
+        const vc2BeforeLamports = (await program.provider.connection.getAccountInfo(vc2.publicKey)).lamports;
+        const vc3BeforeLamports = (await program.provider.connection.getAccountInfo(vc3.publicKey)).lamports;
+
+        const tx1 = await program.methods.claimRewards().accounts({
+            user: vc1.publicKey,
+            tokenMint
+        }).signers([vc1]).rpc();
+
+        const tx2 = await program.methods.claimRewards().accounts({
+            user: vc2.publicKey,
+            tokenMint
+        }).signers([vc2]).rpc();
+
+        const tx3 = await program.methods.claimRewards().accounts({
+            user: vc3.publicKey,
+            tokenMint
+        }).signers([vc3]).rpc();
+
+        const vc1AfterLamports = (await program.provider.connection.getAccountInfo(vc1.publicKey)).lamports;
+        const vc2AfterLamports = (await program.provider.connection.getAccountInfo(vc2.publicKey)).lamports;
+        const vc3AfterLamports = (await program.provider.connection.getAccountInfo(vc3.publicKey)).lamports;
+
+        expect(vc1AfterLamports).to.equal(Math.floor(1/6 * 10 * 0.01 * LAMPORTS_PER_SOL)  + vc1BeforeLamports);
+        expect(vc2AfterLamports).to.equal(Math.floor(1/3 * 10 * 0.01 * LAMPORTS_PER_SOL) + vc2BeforeLamports);
+        expect(vc3AfterLamports).to.equal(Math.floor(1/2 * 10 * 0.01 * LAMPORTS_PER_SOL) + vc3BeforeLamports);
+    });
 
 });
 
@@ -441,3 +509,19 @@ const encrypt = (plaintext, key, iv) => {
         // iv: iv.toString('hex')
     };
 };
+
+function serializeEncryptedData(encryptedData: { ciphertext: string; tag: string; iv: Uint32Array }): {
+    ciphertext: Buffer,
+    tag: Buffer,
+    iv: Buffer
+} {
+    const ciphertextBytes = Buffer.from(encryptedData.ciphertext, 'hex');
+    const tagBytes = Buffer.from(encryptedData.tag, 'hex');
+    const ivBytes = encryptedData.iv.buffer;
+
+    return {
+        ciphertext: ciphertextBytes,
+        tag: tagBytes,
+        iv: Buffer.from(ivBytes)
+    }
+}

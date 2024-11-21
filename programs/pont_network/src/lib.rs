@@ -1,17 +1,23 @@
+mod fundraising;
+
+use anchor_spl::token::{Mint, TokenAccount};
 use itertools::izip;
 use std::vec;
 
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::native_token::LAMPORTS_PER_SOL;
+use fundraising::*;
 
 const ANCHOR_DISCRIMINATOR: usize = 8;
 const PUBKEY_SIZE: usize = 32;
 const FINGERPRINT_SIZE: usize = 32;
+const TX_COST: u64 = (LAMPORTS_PER_SOL as f64 * 0.01) as u64;
 
-declare_id!("3dnBfuMPHW52smosEsJwsnLGCR56DrphyUG68GqAcVxb");
+declare_id!("8h6Ei5DT8ygysAaygguxZFKWcgnPhd9qLFHbvjREYFcR");
 
 #[program]
 pub mod pont_network {
-    use anchor_lang::solana_program::blake3::hash;
+    use anchor_lang::solana_program::{self, blake3::hash, system_instruction};
 
     use super::*;
 
@@ -155,14 +161,35 @@ pub mod pont_network {
         iv: Vec<u8>,
         ciphertext_timestamp: u64,
     ) -> Result<()> {
+        let lamports_required = TX_COST;
+
+        let ship = &ctx.accounts.ship;
+
+        // Create the system transfer instruction
+        let transfer_instruction = system_instruction::transfer(
+            ctx.accounts.ship.key,
+            &ctx.accounts.fundraising_account.key(),
+            lamports_required,
+        );
+
+        ctx.accounts.fundraising_account.total_fees_collected += lamports_required;
+
+        // Send the transfer instruction
+        solana_program::program::invoke(
+            &transfer_instruction,
+            &[
+                ctx.accounts.ship.to_account_info(),
+                ctx.accounts.fundraising_account.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+            ],
+        )?;
+
         let data_account = &mut ctx.accounts.data_account;
-
         let fingerprint = Fingerprint::from(hash(&ciphertext).to_bytes());
-
         data_account.fingerprints.push(fingerprint.clone());
 
         emit!(DataFingerprintAdded {
-            ship: *ctx.accounts.ship.key,
+            ship: *ship.key,
             fingerprint,
             ciphertext,
             tag,
@@ -212,14 +239,57 @@ pub mod pont_network {
         data_account.to_account_info().realloc(new_size, false)?;
         Ok(())
     }
+
+    pub fn start_fundraising(ctx: Context<StartFundraising>) -> Result<()> {
+        fundraising::start_fundraising(ctx)
+    }
+
+    pub fn contribute(ctx: Context<Contribute>, amount: u64) -> Result<()> {
+        fundraising::contribute(ctx, amount)
+    }
+
+    pub fn claim_rewards(ctx: Context<ClaimRewards>) -> Result<()> {
+    let fundraising_account = &mut ctx.accounts.fundraising_account;
+    let user = &mut ctx.accounts.user;
+
+    let total_staked = fundraising_account.total_staked;
+    let total_fees_collected = fundraising_account.total_fees_collected;
+
+    let user_account = match fundraising_account
+        .user_staking_info
+        .iter_mut()
+        .find(|x| x.key == *user.key)
+    {
+        Some(account) => account,
+        None => return Ok(()),
+    };
+
+    let user_share_percentage = user_account.amount_staked as f64 / total_staked as f64;
+
+    // Calculate the user's share of the rewards
+    let fees_since_last_claim =
+        total_fees_collected - user_account.total_fees_when_last_claimed;
+
+    let user_rewards = (fees_since_last_claim as f64 * user_share_percentage) as u64;
+
+    // Transfer the user's share of the rewards
+    **fundraising_account
+        .to_account_info()
+        .try_borrow_mut_lamports()? -= user_rewards as u64;
+    **user.try_borrow_mut_lamports()? += user_rewards as u64;
+
+    msg!("User claimed {} lamports", user_rewards);
+
+    Ok(())
 }
 
-pub fn ensure_sufficient_lamports(account: &AccountInfo, required_lamports: u64) -> Result<()> {
-    let current_lamports = account.lamports();
-    if current_lamports < required_lamports {
-        return Err(ProgramError::InsufficientFunds.into());
+    pub fn stake(ctx: Context<Stake>, amount: u64) -> Result<()> {
+        fundraising::stake_and_claim(ctx, amount)
     }
-    Ok(())
+
+    pub fn unstake(ctx: Context<Unstake>, amount: u64) -> Result<()> {
+        fundraising::unstake(ctx, amount)
+    }
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
@@ -385,10 +455,14 @@ pub struct AddDataAccount<'info> {
 
 #[derive(Accounts)]
 pub struct AddDataFingerprint<'info> {
-    #[account(mut, has_one = ship)]
-    pub data_account: Account<'info, DataAccount>,
     #[account(mut)]
     pub ship: Signer<'info>,
+    #[account(mut, has_one = ship)]
+    pub data_account: Account<'info, DataAccount>,
+    /// CHECK: check account is this program
+    #[account(mut, seeds = [b"fundraising"], bump)]
+    pub fundraising_account: Account<'info, FundraisingAccount>,
+    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
@@ -432,6 +506,19 @@ pub struct ReallocateDataAccount<'info> {
     pub data_account: Account<'info, DataAccount>,
     #[account(mut)]
     pub ship: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct ClaimRewards<'info> {
+    #[account(mut)]
+    pub user: Signer<'info>,
+    #[account(mut, seeds = [b"fundraising"], bump)]
+    pub fundraising_account: Account<'info, FundraisingAccount>,
+    #[account(mut, associated_token::mint = token_mint, associated_token::authority = user)]
+    pub user_token_account: Account<'info, TokenAccount>,
+    #[account(mut)]
+    pub token_mint: Account<'info, Mint>,
     pub system_program: Program<'info, System>,
 }
 
